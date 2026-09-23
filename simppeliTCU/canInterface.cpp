@@ -3,9 +3,8 @@
 #include "canInterface.h"
 
 // --- CAN SETTINGS (Port B) ---
-#define CAN_TX_PIN 7 
-#define CAN_RX_PIN 6
-
+#define CAN_TX_PIN 15
+#define CAN_RX_PIN 16
 unsigned long logStartTime = 0;
 
 void print_can_message(twai_message_t &message) {
