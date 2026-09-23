@@ -16,6 +16,8 @@ void executeCommand(char* cmd) {
         Serial.println("Current Configuration:");
         Serial.printf("  ssid: %s\n", getWifiSSID());
         Serial.printf("  password: %s\n", showSecrets ? getWifiPassword() : "****");
+        Serial.printf("  fallback_ssid: %s\n", getFallbackSSID());
+        Serial.printf("  fallback_password: %s\n", showSecrets ? getFallbackPassword() : "****");
         Serial.printf("  ap_ssid: %s\n", getApSSID());
         Serial.printf("  ap_password: %s\n", showSecrets ? getApPassword() : "****");
         Serial.printf("  hostName: %s\n", getHostName());
@@ -36,6 +38,8 @@ void executeCommand(char* cmd) {
         if (key != NULL) {
             if (strcmp(key, "ssid") == 0) Serial.println(getWifiSSID());
             else if (strcmp(key, "password") == 0) Serial.println("****");
+            else if (strcmp(key, "fallback_ssid") == 0) Serial.println(getFallbackSSID());
+            else if (strcmp(key, "fallback_password") == 0) Serial.println("****");
             else if (strcmp(key, "ap_ssid") == 0) Serial.println(getApSSID());
             else if (strcmp(key, "ap_password") == 0) Serial.println("****");
             else if (strcmp(key, "hostName") == 0) Serial.println(getHostName());
@@ -62,6 +66,8 @@ void executeCommand(char* cmd) {
 
             if (strcmp(key, "ssid") == 0) status = setWifiSSID(val);
             else if (strcmp(key, "password") == 0) status = setWifiPassword(val);
+            else if (strcmp(key, "fallback_ssid") == 0) status = setFallbackSSID(val);
+            else if (strcmp(key, "fallback_password") == 0) status = setFallbackPassword(val);
             else if (strcmp(key, "ap_ssid") == 0) status = setApSSID(val);
             else if (strcmp(key, "ap_password") == 0) status = setApPassword(val);
             else if (strcmp(key, "hostName") == 0) status = setHostName(val);
