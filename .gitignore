@@ -25,3 +25,16 @@ googletest-build/
 # Coverage reports
 coverage.html
 coverage.xml
+
+# Local connection settings, command notes and runtime logs
+/local/
+.env
+.env.*
+!.env.example
+*.log
+
+# Firmware build artifacts and flash/NVS dumps
+*.bin
+*.elf
+*.hex
+*.map

@@ -49,6 +49,9 @@ Available commands:
 * `list` - Shows all current configuration properties.
 * `get <key>` - Prints the current value of the specified key.
 * `set <key> <value>` - Updates the specified key with a new value (saved persistently).
+* `lte-status` - Shows runtime LTE state, active uplink, last error and cached modem diagnostics.
+* `mqtt-status` - Shows MQTT connection state, broker, active uplink and last connection result without reconnecting.
+* `syslog-status` - Shows the UDP log destination, sender state and sent/dropped counters.
 * `reboot` - Restarts the device to apply the changes immediately.
 * `factory-reset` - Clears all configuration settings and restarts the device.
 
@@ -60,6 +63,7 @@ set fallback_ssid PhoneHotspot
 set fallback_password PhonePassword
 set ap_ssid LeafLocalAP
 set ap_password LeafLocalPassword
+set web_password MyWebPassword
 set mqtt_server 192.168.1.100
 set locking_enabled true
 reboot
@@ -69,6 +73,9 @@ reboot
 * `ssid`, `password` (For connecting to an existing Wi-Fi network / STA mode)
 * `fallback_ssid`, `fallback_password` (Optional second STA network; an empty `fallback_ssid` disables fallback)
 * `ap_ssid`, `ap_password` (For creating a local Wi-Fi Access Point / AP mode)
+* `web_password` (HTTP Basic Authentication password for the Web UI; minimum 8 characters)
+* `lte_enabled`, `lte_apn`, `lte_tx`, `lte_rx` (Optional UART/PPP cellular fallback; disabled by default. See [4G setup](docs/lte.md).)
+* `syslog_enabled`, `syslog_host`, `syslog_port` (Optional UDP/RFC5424 remote logging; disabled by default, port 514)
 * `hostName`
 * `mqtt_server`, `mqtt_port`, `mqtt_user`, `mqtt_password`, `vehicle_id`
 * `mqtt_tls` (Enable/disable TLS for MQTT connection; default: `true`)
@@ -80,6 +87,12 @@ reboot
   When `fallback_ssid` is configured, it tries the primary network first, then the fallback network after a 10-second attempt. While on fallback, it checks periodically for the primary network and switches back after detecting it twice at least five seconds apart. Wi-Fi settings take effect after `reboot`.
 * **AP Mode:** Active when `ap_ssid` is configured. The device broadcasts its own Wi-Fi network (useful when away from home).
 * **AP + STA Mode:** Active when both `ssid` and `ap_ssid` are configured. The device will connect to your home Wi-Fi while simultaneously broadcasting its own Access Point.
+
+**Web UI access:** Set `web_password` via USB serial CLI before opening the Web UI. The browser will ask for username `admin` and the configured password. All Web UI controls require authentication. If `web_password` is empty (including after a factory reset), Web UI access is disabled; `set web_password` without a value disables it again. HTTP Basic Authentication does not encrypt credentials, so use the Web UI only on a trusted network and do not expose port 80 to the Internet.
+
+**4G fallback:** With LTE enabled and configured, primary Wi-Fi remains preferred, followed by fallback Wi-Fi, then the modem. The first modem attempt starts after 20 seconds without a Wi-Fi IP (immediately if no STA network is configured). An established PPP session stays on standby; Wi-Fi must be connected for 10 seconds before switching back from LTE. MQTT reconnects on the selected interface using the same broker, credentials and topics. See [4G setup and hardware test procedure](docs/lte.md).
+
+**Remote configuration and logging:** Wi-Fi, LTE and syslog settings can be staged over MQTT and saved with a separate apply/reboot request. Passwords are write-only over MQTT. See [MQTT configuration and syslog-ng setup](docs/remote-configuration.md) for topics, JSON examples and the session/replay protection.
 
 ## Compiling and Uploading
 

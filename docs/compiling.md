@@ -18,9 +18,10 @@ To compile and upload the firmware for the Lilygo T-2CAN board using the Arduino
 If you prefer using the command line, you can build and flash the firmware using the [Arduino CLI](https://arduino.github.io/arduino-cli/).
 
 1. **Install the ESP32 core and required libraries**:
+   The UART/PPP LTE implementation is compiled and tested with ESP32 Arduino core **3.3.12**. It uses the core's bundled `PPP`, `Network` and `NetworkClientSecure` libraries; no separate modem library is required.
    ```bash
    arduino-cli core update-index --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
-   arduino-cli core install esp32:esp32 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+   arduino-cli core install esp32:esp32@3.3.12 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
    arduino-cli lib install PubSubClient
    ```
 
@@ -41,6 +42,7 @@ If you prefer using the command line, you can build and flash the firmware using
 - CMake 3.14+
 - MinGW or Visual Studio (Windows)
 - Git (for FetchContent to download Google Test)
+- cJSON development files and pkg-config (optional; if unavailable, CMake downloads the pinned cJSON source for the remote configuration tests). Firmware builds use the cJSON bundled with the ESP32 core.
 
 ### Commands
 
@@ -60,6 +62,13 @@ cmake --build .
 
 # Run all tests
 ctest
+```
+
+The network selection tests can also run without Google Test or Arduino:
+
+```bash
+g++ -std=c++17 -Wall -Wextra -Werror -IsimppeliTCU test/test_uplinkPolicy.cpp -o /tmp/simppeli-uplink-policy-tests
+/tmp/simppeli-uplink-policy-tests
 ```
 
 

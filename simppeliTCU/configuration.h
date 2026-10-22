@@ -8,14 +8,20 @@ enum class ConfigStatus {
     ERROR_UNKNOWN,
     ERROR_LENGTH,
     ERROR_PASSWORD_LENGTH,
+    ERROR_WEB_PASSWORD_LENGTH,
     ERROR_HOSTNAME_LENGTH,
     ERROR_HOSTNAME_HYPHEN,
     ERROR_HOSTNAME_CHARS,
-    ERROR_PORT_RANGE
+    ERROR_PORT_RANGE,
+    ERROR_LTE_GPIO,
+    ERROR_LTE_APN,
+    ERROR_SYSLOG_HOST,
+    ERROR_STORAGE
 };
 
 void initConfiguration();
 void factoryReset();
+bool configurationStorageReady();
 
 const char* getWifiSSID();
 ConfigStatus setWifiSSID(const char* value);
@@ -34,6 +40,26 @@ ConfigStatus setApSSID(const char* value);
 
 const char* getApPassword();
 ConfigStatus setApPassword(const char* value);
+
+const char* getWebPassword();
+ConfigStatus setWebPassword(const char* value);
+
+bool getLteEnabled();
+ConfigStatus setLteEnabled(bool value);
+const char* getLteApn();
+ConfigStatus setLteApn(const char* value);
+int getLteTx();
+ConfigStatus setLteTx(int value);
+int getLteRx();
+ConfigStatus setLteRx(int value);
+bool isLteGpioValid(int value);
+
+bool getSyslogEnabled();
+ConfigStatus setSyslogEnabled(bool value);
+const char* getSyslogHost();
+ConfigStatus setSyslogHost(const char* value);
+int getSyslogPort();
+ConfigStatus setSyslogPort(int value);
 
 const char* getHostName();
 ConfigStatus setHostName(const char* value);

@@ -1,6 +1,7 @@
 #include "configuration.h"
 #include <Preferences.h>
 #include "stringBuffer.h"
+#include "networkValidation.h"
 
 static Preferences preferences;
 static bool nvsReady = false;
@@ -27,8 +28,14 @@ public:
         if (strlen(val) >= value.capacity()) {
             return ConfigStatus::ERROR_LENGTH;
         }
+        if (nvsReady) {
+            size_t length = strlen(val);
+            if (preferences.putString(key, val) != length ||
+                (length == 0 && (!preferences.isKey(key) || preferences.getString(key, "!").length() != 0))) {
+                return ConfigStatus::ERROR_STORAGE;
+            }
+        }
         value.copyFrom(val);
-        if (nvsReady) preferences.putString(key, value.c_str());
         return ConfigStatus::OK;
     }
     
@@ -55,8 +62,8 @@ public:
     }
     
     ConfigStatus set(int val) {
+        if (nvsReady && preferences.putInt(key, val) != sizeof(int32_t)) return ConfigStatus::ERROR_STORAGE;
         value = val;
-        if (nvsReady) preferences.putInt(key, value);
         return ConfigStatus::OK;
     }
     
@@ -83,8 +90,8 @@ public:
     }
     
     ConfigStatus set(bool val) {
+        if (nvsReady && preferences.putBool(key, val) != sizeof(uint8_t)) return ConfigStatus::ERROR_STORAGE;
         value = val;
-        if (nvsReady) preferences.putBool(key, value);
         return ConfigStatus::OK;
     }
     
@@ -100,6 +107,14 @@ static ConfigString<64> conf_fallback_ssid("fallback_ssid", "");
 static ConfigString<64> conf_fallback_password("fallback_password", "");
 static ConfigString<64> conf_ap_ssid("ap_ssid", "");
 static ConfigString<64> conf_ap_password("ap_password", "");
+static ConfigString<64> conf_web_password("web_password", "");
+static ConfigBool       conf_lte_enabled("lte_enabled", false);
+static ConfigString<64> conf_lte_apn("lte_apn", "");
+static ConfigInt        conf_lte_tx("lte_tx", -1);
+static ConfigInt        conf_lte_rx("lte_rx", -1);
+static ConfigBool       conf_syslog_enabled("syslog_enabled", false);
+static ConfigString<64> conf_syslog_host("syslog_host", "");
+static ConfigInt        conf_syslog_port("syslog_port", 514);
 static ConfigString<64> conf_hostName("hostName", "leaf");
 static ConfigString<64> conf_mqtt_server("mqtt_server", "");
 static ConfigInt        conf_mqtt_port("mqtt_port", 8883);
@@ -122,6 +137,14 @@ void initConfiguration() {
     conf_fallback_password.load();
     conf_ap_ssid.load();
     conf_ap_password.load();
+    conf_web_password.load();
+    conf_lte_enabled.load();
+    conf_lte_apn.load();
+    conf_lte_tx.load();
+    conf_lte_rx.load();
+    conf_syslog_enabled.load();
+    conf_syslog_host.load();
+    conf_syslog_port.load();
     conf_hostName.load();
     conf_mqtt_server.load();
     conf_mqtt_port.load();
@@ -146,6 +169,8 @@ void factoryReset() {
     }
 }
 
+bool configurationStorageReady() { return nvsReady; }
+
 const char* getWifiSSID() { return conf_ssid.get(); }
 ConfigStatus setWifiSSID(const char* value) { return conf_ssid.set(value); }
 
@@ -168,6 +193,57 @@ ConfigStatus setApPassword(const char* value) {
         return ConfigStatus::ERROR_PASSWORD_LENGTH;
     }
     return conf_ap_password.set(value); 
+}
+
+const char* getWebPassword() { return conf_web_password.get(); }
+ConfigStatus setWebPassword(const char* value) {
+    size_t len = strlen(value);
+    if (len > 0 && len < 8) {
+        return ConfigStatus::ERROR_WEB_PASSWORD_LENGTH;
+    }
+    return conf_web_password.set(value);
+}
+
+bool getLteEnabled() { return conf_lte_enabled.get(); }
+ConfigStatus setLteEnabled(bool value) { return conf_lte_enabled.set(value); }
+
+const char* getLteApn() { return conf_lte_apn.get(); }
+ConfigStatus setLteApn(const char* value) {
+    for (const char* p = value; *p; ++p) {
+        if (!isalnum(static_cast<unsigned char>(*p)) && *p != '.' && *p != '-' && *p != '_') {
+            return ConfigStatus::ERROR_LTE_APN;
+        }
+    }
+    return conf_lte_apn.set(value);
+}
+
+bool isLteGpioValid(int value) {
+    return validModemGpio(value);
+}
+
+int getLteTx() { return conf_lte_tx.get(); }
+ConfigStatus setLteTx(int value) {
+    if (!isLteGpioValid(value)) return ConfigStatus::ERROR_LTE_GPIO;
+    return conf_lte_tx.set(value);
+}
+
+int getLteRx() { return conf_lte_rx.get(); }
+ConfigStatus setLteRx(int value) {
+    if (!isLteGpioValid(value)) return ConfigStatus::ERROR_LTE_GPIO;
+    return conf_lte_rx.set(value);
+}
+
+bool getSyslogEnabled() { return conf_syslog_enabled.get(); }
+ConfigStatus setSyslogEnabled(bool value) { return conf_syslog_enabled.set(value); }
+const char* getSyslogHost() { return conf_syslog_host.get(); }
+ConfigStatus setSyslogHost(const char* value) {
+    if (!validNetworkName(value)) return ConfigStatus::ERROR_SYSLOG_HOST;
+    return conf_syslog_host.set(value);
+}
+int getSyslogPort() { return conf_syslog_port.get(); }
+ConfigStatus setSyslogPort(int value) {
+    if (value < 1 || value > 65535) return ConfigStatus::ERROR_PORT_RANGE;
+    return conf_syslog_port.set(value);
 }
 
 const char* getHostName() { return conf_hostName.get(); }

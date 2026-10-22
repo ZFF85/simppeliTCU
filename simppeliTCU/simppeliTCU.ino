@@ -7,6 +7,9 @@
 #include "canLeafZE1.h"
 #include "ui.h"
 #include "mqttInterface.h"
+#include "connectivity.h"
+#include "remoteConfig.h"
+#include "systemLog.h"
 
 WebServer server(80);
 
@@ -52,6 +55,19 @@ void resetData() {
 void handleRoot() {
   bool sequenceActive = (activeSequence != CanSequence::NONE);
   sendMainPage(server, currentSOC, cabinTemp, isChargingNow, currentChargerState, isHvacOn, sequenceActive, getLockingEnabled(), lockState, currentSetpoint, currentFanSpeed, isHeatingEnabled, isCoolingEnabled, currentVentilationMode);
+}
+
+bool authorizeWebUI() {
+  const char* password = getWebPassword();
+  if (password[0] == '\0') {
+    server.send(503, "text/plain", "Web UI disabled. Set web_password via USB serial CLI.");
+    return false;
+  }
+  if (!server.authenticate("admin", password)) {
+    server.requestAuthentication();
+    return false;
+  }
+  return true;
 }
 
 void handleCarAwake() {
@@ -252,7 +268,7 @@ void connectWiFi(bool fallback) {
   usingFallback = fallback;
   wasStaConnected = false;
   wifiAttemptStart = millis();
-  Serial.printf("[WiFi] Connecting to %s: %s\n", fallback ? "fallback" : "primary",
+  systemLog("[WiFi] Connecting to %s: %s", fallback ? "fallback" : "primary",
                 fallback ? getFallbackSSID() : getWifiSSID());
   if (WiFi.status() == WL_CONNECTED) WiFi.disconnect(false, false);
   WiFi.begin(fallback ? getFallbackSSID() : getWifiSSID(),
@@ -301,7 +317,7 @@ void manageWiFi() {
     if (WiFi.status() == WL_CONNECTED &&
         (wasStaConnected || WiFi.SSID() == (usingFallback ? getFallbackSSID() : getWifiSSID()))) {
       if (!wasStaConnected) {
-        Serial.printf("[WiFi] Connected to %s\n", usingFallback ? "fallback" : "primary");
+        systemLog("[WiFi] Connected to %s", usingFallback ? "fallback" : "primary");
         Serial.print("[WiFi] IP: ");
         Serial.println(WiFi.localIP());
         wasStaConnected = true;
@@ -323,8 +339,8 @@ void manageWiFi() {
             primaryScanRunning = false;
             if (foundPrimary) {
               if (primarySeen && currentTime - primarySeenSince >= 5000) {
-                Serial.println("[WiFi] Primary network available again");
-                Serial.println("[WiFi] Switching to primary");
+                systemLog("[WiFi] Primary network available again");
+                systemLog("[WiFi] Switching to primary");
                 primarySeen = false;
                 connectWiFi(false);
               } else if (!primarySeen) {
@@ -351,7 +367,7 @@ void manageWiFi() {
       // Give primary a fresh connection attempt before falling back.
       connectWiFi(false);
     } else if (currentTime - wifiAttemptStart >= retryInterval) {
-      Serial.printf("[WiFi] %s connection failed\n", usingFallback ? "Fallback" : "Primary");
+      systemLog("[WiFi] %s connection failed", usingFallback ? "Fallback" : "Primary");
       connectWiFi(!usingFallback);
     }
   }
@@ -359,7 +375,7 @@ void manageWiFi() {
   if (WiFi.status() != WL_CONNECTED)
   {
     if (wifiAvailable) {
-      Serial.println("WiFi disconnected, stopping mDNS/NBNS services...");
+      systemLog("[WiFi] Disconnected, stopping mDNS/NBNS services");
       MDNS.end();
       NBNS.end();
       wifiAvailable = false;
@@ -371,7 +387,7 @@ void manageWiFi() {
     }
   }
   else if (!wifiAvailable) {
-    Serial.println("\nWi-Fi connected!");
+    systemLog("[WiFi] Connected; IP: %s", WiFi.localIP().toString().c_str());
   
     if (!MDNS.begin(getHostName())) {
       Serial.println("Error starting mDNS service!");
@@ -398,6 +414,7 @@ void manageWiFi() {
 void setup() {
   Serial.begin(115200);
   initConfiguration();
+  setupSystemLog();
 
   bool staEnabled = strlen(getWifiSSID()) > 0;
   bool apEnabled = strlen(getApSSID()) > 0;
@@ -444,15 +461,16 @@ void setup() {
 
   setupMQTT();
   setupCAN();
+  setupConnectivity();
 
   if (wifiEnabled) {
-      server.on("/", handleRoot);
-      server.on("/refresh", handleRefresh);
-      server.on("/hvac_on", handleHvacOn);
-      server.on("/hvac_off", handleHvacOff);
-      server.on("/charge_on", handleChargeOn);
-      server.on("/unlock", handleUnlock);
-      server.on("/lock", handleLock);
+      server.on("/", []() { if (authorizeWebUI()) handleRoot(); });
+      server.on("/refresh", []() { if (authorizeWebUI()) handleRefresh(); });
+      server.on("/hvac_on", []() { if (authorizeWebUI()) handleHvacOn(); });
+      server.on("/hvac_off", []() { if (authorizeWebUI()) handleHvacOff(); });
+      server.on("/charge_on", []() { if (authorizeWebUI()) handleChargeOn(); });
+      server.on("/unlock", []() { if (authorizeWebUI()) handleUnlock(); });
+      server.on("/lock", []() { if (authorizeWebUI()) handleLock(); });
       server.begin();
   }
 }
@@ -471,4 +489,5 @@ void loop() {
   }
   manageWiFi();
   processSerialInput();
+  manageRemoteConfig();
 }

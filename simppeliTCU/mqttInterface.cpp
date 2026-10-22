@@ -1,16 +1,39 @@
 #include "mqttInterface.h"
-#include <WiFi.h>
-#include <WiFiClientSecure.h>
+#include <NetworkClientSecure.h>
 #include <PubSubClient.h>
-#include <WiFiClient.h>
+#include <NetworkClient.h>
 #include "configuration.h"
+#include "connectivity.h"
 #include "stringBuffer.h"
 #include "hassDiscovery.h"
+#include "remoteConfig.h"
+#include "systemLog.h"
 
-WiFiClient espClient; // For non-TLS
-WiFiClientSecure espClientSecure; // For TLS
+NetworkClient espClient; // For non-TLS, over Wi-Fi or PPP
+NetworkClientSecure espClientSecure; // For TLS, over Wi-Fi or PPP
 PubSubClient mqttClient;
 unsigned long lastMqttReconnectAttempt = 0;
+static unsigned long mqttAttemptCount = 0;
+static unsigned long mqttAttemptAt = 0;
+static int lastMqttConnectResult = MQTT_DISCONNECTED;
+static int mqttPortAtBoot = 0;
+static bool mqttTlsAtBoot = false;
+
+static const char* mqttStateName(int state) {
+  switch (state) {
+    case MQTT_CONNECTION_TIMEOUT: return "connection timed out";
+    case MQTT_CONNECTION_LOST: return "connection lost";
+    case MQTT_CONNECT_FAILED: return "TCP/TLS connection failed";
+    case MQTT_DISCONNECTED: return "disconnected";
+    case MQTT_CONNECTED: return "connected";
+    case MQTT_CONNECT_BAD_PROTOCOL: return "broker rejected protocol";
+    case MQTT_CONNECT_BAD_CLIENT_ID: return "broker rejected client ID";
+    case MQTT_CONNECT_UNAVAILABLE: return "broker unavailable";
+    case MQTT_CONNECT_BAD_CREDENTIALS: return "broker rejected credentials";
+    case MQTT_CONNECT_UNAUTHORIZED: return "broker rejected authorization";
+    default: return "unknown";
+  }
+}
 
 struct OvmsCommands {
   const char* hvacOn = "climatecontrol on";
@@ -62,6 +85,8 @@ static StringBuffer<128> mqttPrefix;
 static StringBuffer<128> currentResponseTopic;
 
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
+  // Configuration may contain passwords. Handle it before legacy payload logging.
+  if (handleRemoteConfig(mqttClient, mqttPrefix.c_str(), topic, payload, length)) return;
   StringBuffer<64> msg;
   msg.copyFromData(payload, length);
   msg.trim();
@@ -132,6 +157,8 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
 }
 
 boolean reconnectMQTT() {
+  ++mqttAttemptCount;
+  mqttAttemptAt = millis();
   StringBuffer<32> clientId;
   clientId.format("simppeliTCU-%04X", (unsigned int)random(0xffff));
   
@@ -145,8 +172,9 @@ boolean reconnectMQTT() {
     connected = mqttClient.connect(clientId.c_str(), "", "", willTopic.c_str(), 0, true, "no");
   }
 
+  lastMqttConnectResult = mqttClient.state();
   if (connected) {
-    Serial.println("MQTT Connected!");
+    systemLog("[MQTT] Connected");
     
     // Mark as connected in Retained message (for OVMS app to see vehicle is online)
     mqttClient.publish(willTopic.c_str(), (const uint8_t*)"yes", 3, true);
@@ -155,6 +183,7 @@ boolean reconnectMQTT() {
     StringBuffer<128> cmdTopic;
     cmdTopic.format("%sclient/+/command/+", mqttPrefix.c_str());
     mqttClient.subscribe(cmdTopic.c_str());
+    remoteConfigConnected(mqttClient, mqttPrefix.c_str());
     
     if (getHassDiscoveryEnabled()) {
       mqttPublishHassDiscovery(mqttClient, mqttPrefix);
@@ -174,10 +203,13 @@ boolean reconnectMQTT() {
     
     return true;
   }
+  systemLog("[MQTT] Connect failed: %d (%s)", lastMqttConnectResult, mqttStateName(lastMqttConnectResult));
   return false;
 }
 
 void setupMQTT() {
+  mqttPortAtBoot = getMqttPort();
+  mqttTlsAtBoot = getMqttTls();
   mqttPrefix.format("ovms/%s/%s/", getMqttUser(), getVehicleId());
   if (getMqttTls()) {
     espClientSecure.setInsecure(); // Skip certificate validation for simplicity
@@ -188,7 +220,7 @@ void setupMQTT() {
   mqttClient.setServer(getMqttServer(), getMqttPort());
   
   // OVMS messages have longer topics, so enlarging buffer is recommended
-  mqttClient.setBufferSize(1024);
+  mqttClient.setBufferSize(2048);
   mqttClient.setCallback(mqttCallback);
 }
 
@@ -197,7 +229,19 @@ void manageMQTT() {
     return; // Don't try to connect if MQTT server is not configured
   }
 
-  if (WiFi.status() == WL_CONNECTED) {
+  static Uplink previousUplink = Uplink::OFFLINE;
+  Uplink uplink = getActiveUplink();
+  if (uplink != previousUplink) {
+    systemLog("[MQTT] Uplink changed; reconnecting client");
+    // TCP sockets do not migrate between interfaces; reconnect and resubscribe.
+    mqttClient.disconnect();
+    espClient.stop();
+    espClientSecure.stop();
+    previousUplink = uplink;
+    lastMqttReconnectAttempt = millis() - 30001UL;
+  }
+
+  if (uplink != Uplink::OFFLINE) {
     if (!mqttClient.connected()) {
       if (millis() - lastMqttReconnectAttempt > 30000) {
         lastMqttReconnectAttempt = millis();
@@ -231,6 +275,29 @@ void manageMQTT() {
     mqttPublishStatus(statusMsg.c_str());
     
     mqttStatusRequested = false;
+  }
+}
+
+void printMqttStatus() {
+  // Invoked from the same loop as manageMQTT(), without reconnecting/publishing.
+  bool connected = mqttClient.connected();
+  Uplink uplink = getActiveUplink();
+  Serial.println("MQTT status:");
+  Serial.printf("  Broker: %s:%d\n", getMqttServer()[0] ? getMqttServer() : "not configured", mqttPortAtBoot);
+  Serial.printf("  TLS: %s\n", mqttTlsAtBoot ? "enabled (certificate validation disabled)" : "disabled");
+  Serial.printf("  Active uplink: %s\n", uplink == Uplink::WIFI ? "WiFi" : uplink == Uplink::LTE ? "4G" : "offline");
+  Serial.printf("  Connected: %s\n", connected ? "yes" : "no");
+  Serial.printf("  Client state: %d (%s)\n", mqttClient.state(), mqttStateName(mqttClient.state()));
+  Serial.printf("  Topic prefix: %s\n", mqttPrefix.c_str());
+  Serial.printf("  Attempts: %lu\n", mqttAttemptCount);
+  if (mqttAttemptCount) {
+    Serial.printf("  Last attempt: %lu s ago; result: %d (%s)\n",
+                  (millis() - mqttAttemptAt) / 1000, lastMqttConnectResult, mqttStateName(lastMqttConnectResult));
+  }
+  if (!getMqttServer()[0]) Serial.println("  Waiting: configure mqtt_server.");
+  else if (uplink == Uplink::OFFLINE) Serial.println("  Waiting: no usable WiFi/4G uplink.");
+  if (getMqttPort() != mqttPortAtBoot || getMqttTls() != mqttTlsAtBoot) {
+    Serial.println("  Stored port/TLS settings differ from runtime; reboot to apply.");
   }
 }
 

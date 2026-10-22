@@ -7,6 +7,7 @@
 // Initialization and Loop
 void setupMQTT();
 void manageMQTT();
+void printMqttStatus();
 
 // Status updates
 void mqttUpdateSOC(float soc);
