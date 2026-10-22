@@ -5,6 +5,8 @@
 
 With Nissan shutting down the NissanConnect EV services, `simppeliTCU` offers a local, Wi-Fi-based ESP32 solution to regain control of your car's climate and charging via the IT CAN bus (often referred to as CAR-CAN by the community). Similarly as the original TCU.
 
+**Hardware used in this fork:** Waveshare **ESP32-S3-RS485-CAN**, with an optional **BK-7670 V1 breakout carrying a SIMCom A7670E** for cellular fallback. The wiring below describes this setup; the upstream project uses a LilyGO T-2CAN.
+
 NOTE: This project is currently an draft implementation generated mainly with AI.
 
 ## Features
@@ -28,18 +30,66 @@ NOTE: This project is currently an draft implementation generated mainly with AI
 * **Glove box removal (LHD ZE1 Leaf):** [https://youtu.be/kyx2A4U-M1M?si=YGewj1TeBEfrpOKV](https://youtu.be/kyx2A4U-M1M?si=YGewj1TeBEfrpOKV)
 
 ## Hardware Requirements
-1. **Lilygo T-2CAN** (ESP32 with built-in CAN transceiver).
-2. **Automotive 12V to 5V Step-Down Converter** (Highly recommended: a flush-mount 12V USB car socket).
-3. Connectors/pins to mate with the original TCU harness.
 
-**See the [Installation Guide](docs/INSTALLATION.md) for full step-by-step instructions, wiring diagrams, and required tools.**
+1. **Waveshare ESP32-S3-RS485-CAN**, with an onboard CAN transceiver.
+2. Optional **AND BK-7670 V1 / SIMCom A7670E** modem, LTE antenna and active data SIM with the PIN request disabled.
+3. For the modem, an **automotive-suitable regulated 5 V supply rated for at least 2 A**, including transmit current peaks.
+4. A four-pin **SH1.0 cable**, modem header connections and connectors/pins to mate with the original TCU harness.
+
+The [upstream Installation Guide](docs/INSTALLATION.md) covers the vehicle harness and LilyGO installation. For this fork, use the Waveshare connections below instead of the LilyGO pin assignments.
 
 ### ⚠️ CRITICAL WIRING WARNING
-**DO NOT connect the car's 12V line directly to the Lilygo board!** Automotive 12V systems experience massive voltage spikes (transients) that will most likely damage the ESP32. 
-* Unplug the IT-CAN wires from original TCU.
-* Route the 12V from the TCU harness through an automotive-grade 12V-to-5V USB adapter (with an inline fuse).
-* Power the Lilygo using a standard USB cable from the adapter.
-* Connect `CAN-H` and `CAN-L` to the Lilygo's TWAI pins (Port B: TX 7, RX 6 in this code).
+
+The Waveshare screw-terminal power input is rated **7–36 V**, so nominal 12 V connects there, using a fused, automotive-suitable supply. This input rating does not make every automotive transient safe. **Do not connect 12 V to the USB, 3V3, GPIO or modem VCC pins.** The original LilyGO board has different power requirements. [Waveshare hardware documentation](https://docs.waveshare.net/ESP32-S3-RS485-CAN/)
+
+### Waveshare CAN wiring
+
+Disconnect the original TCU's IT-CAN connection and connect the vehicle's **CAN-H to the Waveshare H terminal**, and **CAN-L to the L terminal**. The onboard CAN controller/transceiver uses **GPIO15 for TX and GPIO16 for RX**, as configured in `simppeliTCU/canInterface.cpp`. These are internal controller signals; the vehicle CAN pair connects to the **H/L terminals**, not directly to GPIO15/16. This fork does not use the upstream LilyGO GPIO7/6 assignments.
+
+### A7670E modem wiring through SH1.0
+
+Use the Waveshare's **four-pin GPIO SH1.0 connector**, not the two-pin RTC battery connector. GPIO1 and GPIO2 are assigned to UART1 by the LTE configuration:
+
+<img src="docs/waveshare-sh10-connector.png" alt="Waveshare SH1.0 connector with black, red, orange and yellow wires next to the USB-C port" width="640">
+
+*Photo of the Waveshare end of the cable used in this setup. From left to right at the white connector: black = GND, red = 3V3 (unused), orange = GPIO2 / ESP32 RX (to modem T), yellow = GPIO1 / ESP32 TX (to modem R). The modem end is not shown.*
+
+| Waveshare SH1.0 signal | Wire in the cable used for this setup | BK-7670 V1 connection |
+| --- | --- | --- |
+| **GPIO1 — ESP32 TX** | **Yellow** | **R / RXD**, header pin 5 — modem input |
+| **GPIO2 — ESP32 RX** | **Orange** | **T / TXD**, header pin 4 — modem output |
+| **GND** | Black | **G / GND**, header pin 1 or 6, unless a common ground is already verified |
+| **3V3** | Red | **Leave disconnected and insulate**; not the modem supply |
+
+Cable colors can vary: identify each contact from the board's labels/pinout before connecting it. TX connects to RX in both directions. The BK-7670 breakout provides **3.3 V TTL UART**, compatible with ESP32 GPIO; this does not describe the bare modem module's pins. [Waveshare connector pinout](https://docs.waveshare.net/assets/images/ESP32-S3-RS485-CAN-details-17-962be6f963b528179bb59193896f4ac3.webp), [BK-A7670 manufacturer manual, page 4](https://img.yfisher.com/m0/1692268831380-a7670-series-model-bk-a7670-board-user-manual-v10.pdf#page=4)
+
+Power the breakout's **V / VCC (header pin 2)** from the regulated **5 V / at least 2 A** supply, and its **G / GND** from the supply return. Do not use the SH1.0 red/3V3 wire to power it. The manufacturer recommends 5 V for this breakout. Leave **K/PWRKEY** and **S/SLEEP** unconnected for the documented default startup; the firmware does not control them. [BK-A7670 manufacturer manual](https://img.yfisher.com/m0/1692268831380-a7670-series-model-bk-a7670-board-user-manual-v10.pdf#page=4)
+
+Example supply arrangement with a **non-isolated** step-down converter:
+
+```text
+Fused vehicle +12 V ----+---- Waveshare power terminal +
+                       +---- Step-down IN+
+Vehicle GND -----------+---- Waveshare power terminal -
+                       +---- Step-down IN-
+
+Step-down OUT+ (5 V) -------- BK-7670 V / VCC
+Step-down OUT- (GND) -------- BK-7670 G / GND
+```
+
+UART requires a common logic ground. If the converter's IN- and OUT- are common, the shared supply return can provide it; verify continuity with power disconnected. Otherwise, connect the SH1.0 GND to modem GND. Connect the LTE antenna before powering the modem.
+
+For this GPIO1/2 wiring, enter the following in the **USB serial CLI**, replacing `YOUR_APN` with your provider's APN:
+
+```text
+set lte_tx 1
+set lte_rx 2
+set lte_apn YOUR_APN
+set lte_enabled true
+reboot
+```
+
+Check `lte-status` and `mqtt-status` after reboot. Wi-Fi remains preferred; LTE initialization starts after 20 seconds without a Wi-Fi IP, or immediately if no STA network is configured. See the [4G setup and hardware test procedure](docs/lte.md) for detailed behavior and troubleshooting. Actual APNs, passwords and broker addresses stay in device NVS, not in this README or the firmware source.
 
 ## Configuration
 
