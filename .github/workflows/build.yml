@@ -3,6 +3,10 @@ name: Build
 on:
   push:
     branches: [ "**" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   unit-tests:
@@ -64,8 +68,6 @@ jobs:
   build-firmware:
     name: Build Firmware (${{ matrix.artifact }})
     needs: unit-tests
-    # arduino/compile-sketches@v1 pins Python 3.12.4, which has no build for
-    # ubuntu-26.04 (current ubuntu-latest). Use ubuntu-24.04 where it exists.
     runs-on: ubuntu-24.04
     # One firmware binary per supported board, selected via -DBOARD=<define>
     # (see simppeliTCU/hardware.h).
@@ -82,29 +84,38 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    - name: Inject git commit hash into version.h
-      shell: bash
+    - name: Install Arduino CLI
+      uses: arduino/setup-arduino-cli@v2
+      with:
+        version: '1.5.1'
+
+    - name: Install core and libraries
+      env:
+        BOARD_DEFINE: ${{ matrix.board-define }}
+      run: |
+        arduino-cli core update-index --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+        arduino-cli core install esp32:esp32@3.3.12 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+        arduino-cli lib install 'PubSubClient@2.8'
+        if [ "$BOARD_DEFINE" = LILYGO_T2CAN ]; then
+          arduino-cli lib install 'autowp-mcp2515@1.3.1'
+        fi
+
+    - name: Compile firmware
+      env:
+        BOARD_DEFINE: ${{ matrix.board-define }}
       run: |
         SHORT_SHA=$(git rev-parse --short=7 HEAD)
-        sed -i "s/#define GIT_HASH \"local\"/#define GIT_HASH \"${SHORT_SHA}\"/" simppeliTCU/version.h
-
-    - name: Compile Sketch
-      uses: arduino/compile-sketches@v1
-      with:
-        fqbn: esp32:esp32:esp32s3:CDCOnBoot=cdc
-        sketch-paths: |
+        arduino-cli compile \
+          --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc \
+          --build-path "$RUNNER_TEMP/firmware-build" \
+          --output-dir firmware \
+          --build-property "compiler.cpp.extra_flags=-DBOARD=$BOARD_DEFINE -DGIT_HASH_RAW=$SHORT_SHA" \
           simppeliTCU
-        cli-compile-flags: |
-          - --export-binaries
-          - --build-property=compiler.cpp.extra_flags=-DBOARD=${{ matrix.board-define }}
-        libraries: |
-          - name: PubSubClient
-          - name: autowp-mcp2515
 
     - name: Rename firmware binaries
       shell: bash
       run: |
-        find simppeliTCU/build -maxdepth 1 -name 'simppeliTCU.ino.*' -type f | while read -r f; do
+        find firmware -maxdepth 1 -name 'simppeliTCU.ino.*' -type f | while read -r f; do
           base=$(basename "$f")
           mv "$f" "$(dirname "$f")/${{ matrix.artifact }}.${base#simppeliTCU.ino.}"
         done
@@ -113,7 +124,9 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: ${{ matrix.artifact }}
-        path: simppeliTCU/build/
+        path: firmware/
+        if-no-files-found: error
+        retention-days: 30
 
   release:
     name: Create Release

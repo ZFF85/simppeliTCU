@@ -152,6 +152,23 @@ reboot
 
 ## Compiling and Uploading
 
+### GitHub Actions: download a Waveshare build
+
+The [Build workflow](https://github.com/ZFF85/simppeliTCU/actions/workflows/build.yml) runs on every push, including `waveshare-fallback-wifi`. It runs the host tests, then builds separate Waveshare and LilyGO firmware artifacts using Arduino CLI 1.5.1 and ESP32 core 3.3.12. No device credentials or GitHub secrets are needed for compilation; your network configuration stays in device NVS.
+
+1. Open **Actions → Build** in this fork and select a successful run for **waveshare-fallback-wifi**.
+2. Under **Artifacts**, download **simppeliTCU-Waveshare-esp32-rs485-can** and extract the ZIP. Artifacts are retained for 30 days; downloading them requires signing in to GitHub.
+3. For an update over USB on Linux, close the serial monitor and run this from the extracted directory (with `esptool` installed):
+
+   ```bash
+   esptool --chip esp32s3 --port /dev/ttyACM0 write-flash \
+     0x10000 simppeliTCU-Waveshare-esp32-rs485-can.bin
+   ```
+
+   This updates the application on an already flashed board with the same partition layout. For a first installation, flash `simppeliTCU-Waveshare-esp32-rs485-can.merged.bin` at `0x0` instead. See the [binary flashing guide](docs/flashing.md) for more options.
+
+The workflow also supports **Run workflow** once the workflow with `workflow_dispatch` is present on the repository's default branch; choose `waveshare-fallback-wifi` as the target. Push builds work directly on this branch. Each firmware reports its Git commit through `version`, so you can identify the installed build.
+
 ### Linux: Waveshare ESP32-S3-RS485-CAN
 
 Run these commands in Bash with Git and [Arduino CLI](https://arduino.github.io/arduino-cli/) installed. The Waveshare firmware has been compiled with **Arduino CLI 1.5.1**, **ESP32 Arduino core 3.3.12** and **PubSubClient 2.8**. The modem uses the ESP32 core's bundled PPP support; Waveshare does not need the MCP2515 library.
