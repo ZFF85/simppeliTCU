@@ -17,12 +17,14 @@ This fork defaults to **Waveshare ESP32-S3-RS485-CAN**. The upstream compile-tim
 
 If you prefer using the command line, you can build and flash the firmware using the [Arduino CLI](https://arduino.github.io/arduino-cli/).
 
+For the complete **Linux + Waveshare** walkthrough, including this fork's branch, USB permissions, upload and serial monitoring, see the [README](../README.md#linux-waveshare-esp32-s3-rs485-can). Run the commands below from the repository root as your normal user, without `sudo`.
+
 1. **Install the ESP32 core and required libraries**:
    The UART/PPP LTE implementation is compiled and tested with ESP32 Arduino core **3.3.12**. It uses the core's bundled `PPP`, `Network` and `NetworkClientSecure` libraries; no separate modem library is required.
    ```bash
    arduino-cli core update-index --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
    arduino-cli core install esp32:esp32@3.3.12 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
-   arduino-cli lib install PubSubClient
+   arduino-cli lib install 'PubSubClient@2.8'
    ```
 
    Only LilyGO dual-CAN builds also require `arduino-cli lib install autowp-mcp2515`. Waveshare builds disable the MCP2515 interface automatically.
@@ -38,7 +40,7 @@ If you prefer using the command line, you can build and flash the firmware using
 
    For LilyGO, replace `WAVESHARE_ESP32_S3_RS485_CAN` with `LILYGO_T2CAN`. The firmware pins and second-CAN availability follow this setting. LTE UART pins must not overlap either board's CAN/SPI wiring.
 
-3. **Upload to the board** (replace `<PORT>` with your COM port, e.g., `COM3` or `/dev/cu.usbserial...`):
+3. **Upload to the board** (close the serial monitor and replace `<PORT>` with your port, e.g., `/dev/ttyACM0` on Linux, `COM3` on Windows or `/dev/cu.usbserial...` on macOS):
    ```bash
    arduino-cli upload -p <PORT> --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc \
      --build-path /tmp/simppeli-tcu-flash simppeliTCU

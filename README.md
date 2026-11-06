@@ -7,6 +7,8 @@ With Nissan shutting down the NissanConnect EV services, `simppeliTCU` offers a 
 
 **Hardware used in this fork:** Waveshare **ESP32-S3-RS485-CAN**, with an optional **BK-7670 V1 breakout carrying a SIMCom A7670E** for cellular fallback. The wiring below describes this setup; the upstream project uses a LilyGO T-2CAN.
 
+The `waveshare-fallback-wifi` branch includes upstream **v0.2.0**, with the Waveshare CAN pin assignments and this fork's Wi-Fi/LTE, MQTT configuration and Web UI authentication preserved. Remote syslog support has been removed; diagnostics remain available through USB serial, `lte-status` and `mqtt-status`.
+
 NOTE: This project is currently an draft implementation generated mainly with AI.
 
 ## Features
@@ -16,6 +18,8 @@ NOTE: This project is currently an draft implementation generated mainly with AI
 * 🔕 **Nag Screen Auto-Dismiss:** Upstream feature for dual-CAN builds connected to AV-CAN; unavailable on the single-CAN Waveshare setup.
 * 📊 **Live Data:** Reads State of Charge (SOC %) and Cabin Temperature from the CAN bus.
 * 🌐 **Web UI:** Simple, lightweight mobile-friendly web interface.
+* 🔑 **Web UI Authentication:** Password-protected controls, configured through the serial CLI.
+* 📶 **Preferred Wi-Fi with Fallback:** Primary Wi-Fi, optional secondary Wi-Fi and optional A7670E UART/PPP cellular fallback, with automatic return to Wi-Fi.
 * 🏠 **Home Assistant Integration:** Automatic discovery of metrics and controls via MQTT.
 * 📡 **MQTT Support:** Integrate with home automation or mobile apps over encrypted transport. Note: unless proper certificate validation is implemented, the MQTT server is not authenticated. See the [MQTT Setup Guide](docs/mqtt.md).
 
@@ -148,7 +152,81 @@ reboot
 
 ## Compiling and Uploading
 
-For instructions on how to compile and upload the firmware using the Arduino IDE or the Command Line Interface (CLI), please refer to the [Compiling and Uploading Guide](docs/compiling.md).
+### Linux: Waveshare ESP32-S3-RS485-CAN
+
+Run these commands in Bash with Git and [Arduino CLI](https://arduino.github.io/arduino-cli/) installed. The Waveshare firmware has been compiled with **Arduino CLI 1.5.1**, **ESP32 Arduino core 3.3.12** and **PubSubClient 2.8**. The modem uses the ESP32 core's bundled PPP support; Waveshare does not need the MCP2515 library.
+
+**1. Get this fork's Waveshare branch:**
+
+```bash
+git clone --branch waveshare-fallback-wifi https://github.com/ZFF85/simppeliTCU.git
+cd simppeliTCU
+```
+
+If you already have the repository, use your existing checkout on `waveshare-fallback-wifi` and run the following commands from the repository root, which contains the `simppeliTCU/` sketch directory.
+
+**2. Install the ESP32 core and MQTT library as your normal user:**
+
+```bash
+arduino-cli core update-index \
+  --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+arduino-cli core install esp32:esp32@3.3.12 \
+  --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+arduino-cli lib install 'PubSubClient@2.8'
+```
+
+**3. Compile specifically for Waveshare, with USB serial enabled:**
+
+```bash
+arduino-cli compile \
+  --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc \
+  --build-path /tmp/simppeli-tcu-flash \
+  --build-property "compiler.cpp.extra_flags=-DBOARD=WAVESHARE_ESP32_S3_RS485_CAN -DGIT_HASH_RAW=$(git rev-parse --short HEAD)" \
+  simppeliTCU
+```
+
+This selects **CAN TX GPIO15 / RX GPIO16** and disables the second CAN interface. The optional modem wiring uses **ESP32 TX GPIO1 / RX GPIO2**, configured separately using the CLI above. The compiled firmware reports its version and commit through the `version` command.
+
+**4. Connect USB and find the serial port:**
+
+```bash
+arduino-cli board list
+ls -l /dev/ttyACM0
+```
+
+The usual port is `/dev/ttyACM0`; replace it in the commands below if yours differs. Automatic board detection may show a generic ESP32 device; use the explicit ESP32-S3 FQBN shown here.
+
+If access is denied, grant your user access to the serial device. A temporary option, with `setfacl` installed, is:
+
+```bash
+sudo setfacl -m "u:$(id -un):rw" /dev/ttyACM0
+```
+
+This ACL may need to be applied again after reconnecting USB. For persistent access, add your user to the group owning the serial port, typically `uucp` on Arch Linux or `dialout` on Debian/Ubuntu, then log out and back in. Run `arduino-cli` **without sudo**: root has a separate Arduino configuration and may report that the ESP32 platform is not installed.
+
+**5. Upload the compiled firmware:**
+
+Close any serial monitor first, then run:
+
+```bash
+arduino-cli upload \
+  --port /dev/ttyACM0 \
+  --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc \
+  --build-path /tmp/simppeli-tcu-flash \
+  simppeliTCU
+```
+
+Use the same build path for compilation and upload. Recompile after changing source code; `upload` sends the existing build. Normal uploads preserve configuration stored in NVS; a full flash erase or `factory-reset` clears it.
+
+**6. Open the USB serial console:**
+
+```bash
+arduino-cli monitor --port /dev/ttyACM0 --config baudrate=115200
+```
+
+Send commands with a newline. Start with `version`, `lte-status` and `mqtt-status`; see [Configuration](#configuration) for Wi-Fi, modem, MQTT and Web UI settings. Press **Ctrl+C** to close the monitor before the next upload.
+
+For Arduino IDE instructions, other boards and host tests, see the [Compiling and Uploading Guide](docs/compiling.md).
 
 ## Flashing Pre-compiled Binaries
 
