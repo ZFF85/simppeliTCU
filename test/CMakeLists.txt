@@ -77,3 +77,18 @@ target_link_libraries(remote_config_controller_tests PRIVATE ${GTEST_MAIN_TARGET
 add_test(NAME remote_config_controller_tests COMMAND remote_config_controller_tests)
 
 add_test(NAME can_leaf_ze1_parsing_tests COMMAND can_leaf_ze1_parsing_tests)
+
+foreach(profile IN ITEMS waveshare lilygo lilygo_single_can)
+    add_executable(hardware_${profile}_tests test_hardwareConfig.cpp)
+    target_include_directories(hardware_${profile}_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../simppeliTCU)
+    target_link_libraries(hardware_${profile}_tests PRIVATE ${GTEST_MAIN_TARGET})
+    if(profile STREQUAL "waveshare")
+        # The fork must default to Waveshare and force unavailable MCP2515 off.
+        target_compile_definitions(hardware_${profile}_tests PRIVATE USE_SECOND_CAN=1)
+    elseif(profile STREQUAL "lilygo_single_can")
+        target_compile_definitions(hardware_${profile}_tests PRIVATE BOARD=LILYGO_T2CAN USE_SECOND_CAN=0)
+    else()
+        target_compile_definitions(hardware_${profile}_tests PRIVATE BOARD=LILYGO_T2CAN)
+    endif()
+    add_test(NAME hardware_${profile}_tests COMMAND hardware_${profile}_tests)
+endforeach()

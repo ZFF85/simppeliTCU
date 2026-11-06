@@ -9,6 +9,7 @@
 #include "mqttInterface.h"
 #include "connectivity.h"
 #include "remoteConfig.h"
+#include "version.h"
 
 WebServer server(80);
 
@@ -131,6 +132,15 @@ void handleLockStatus(bool locked) {
 void handleRawSOC(float soc) {
   currentSOC = soc;
   mqttUpdateSOC(soc);
+}
+
+void handleNagScreenPopup() {
+  if (!getNagDismissEnabled() || activeSequence != CanSequence::NONE) {
+    return;
+  }
+  Serial.println("### Dismiss Nag Screen! ###");
+  logSequenceStart();
+  startSequence(CanSequence::DISMISS_NAG, millis());
 }
 
 void logSequenceStart() {
@@ -411,7 +421,9 @@ void manageWiFi() {
 }
 
 void setup() {
+  Serial.setTxBufferSize(4096);
   Serial.begin(115200);
+  Serial.println("\nsimppeliTCU " FW_FULL_VERSION);
   initConfiguration();
 
   bool staEnabled = strlen(getWifiSSID()) > 0;

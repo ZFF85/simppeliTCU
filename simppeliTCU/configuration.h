@@ -15,7 +15,8 @@ enum class ConfigStatus {
     ERROR_PORT_RANGE,
     ERROR_LTE_GPIO,
     ERROR_LTE_APN,
-    ERROR_STORAGE
+    ERROR_STORAGE,
+    ERROR_UNSUPPORTED_FEATURE
 };
 
 void initConfiguration();
@@ -79,5 +80,8 @@ ConfigStatus setMqttTls(bool value);
 
 bool getHassDiscoveryEnabled();
 ConfigStatus setHassDiscoveryEnabled(bool value);
+
+bool getNagDismissEnabled();
+ConfigStatus setNagDismissEnabled(bool value);
 
 #endif

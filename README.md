@@ -13,6 +13,7 @@ NOTE: This project is currently an draft implementation generated mainly with AI
 * 🌡️ **Remote Climate Control:** Start and active abort of the cabin heater/AC.
 * 🔋 **Remote Charging:** Override the charge timer to start charging.
 * 🔐 **Door Locking:** Lock and unlock doors remotely (disabled by default, enable via configuration).
+* 🔕 **Nag Screen Auto-Dismiss:** Upstream feature for dual-CAN builds connected to AV-CAN; unavailable on the single-CAN Waveshare setup.
 * 📊 **Live Data:** Reads State of Charge (SOC %) and Cabin Temperature from the CAN bus.
 * 🌐 **Web UI:** Simple, lightweight mobile-friendly web interface.
 * 🏠 **Home Assistant Integration:** Automatic discovery of metrics and controls via MQTT.
@@ -28,6 +29,7 @@ NOTE: This project is currently an draft implementation generated mainly with AI
 * **Web interface through wifi:** [https://youtube.com/shorts/XqAgwizNodE](https://youtube.com/shorts/XqAgwizNodE)
 * **MQTT use with IoTMQTTPanel and OVMS Connect:** [https://youtu.be/g8Yh6OgjL-Q?si=QtElrzG9FnF5YEUm](https://youtu.be/g8Yh6OgjL-Q?si=QtElrzG9FnF5YEUm)
 * **Glove box removal (LHD ZE1 Leaf):** [https://youtu.be/kyx2A4U-M1M?si=YGewj1TeBEfrpOKV](https://youtu.be/kyx2A4U-M1M?si=YGewj1TeBEfrpOKV)
+* **Nag Screen Auto-Dismiss** [https://youtu.be/FWOML1giRBo?si=TElSWKBwn389HtfV](https://youtu.be/FWOML1giRBo?si=TElSWKBwn389HtfV)
 
 ## Hardware Requirements
 
@@ -44,7 +46,7 @@ The Waveshare screw-terminal power input is rated **7–36 V**, so nominal 12 V 
 
 ### Waveshare CAN wiring
 
-Disconnect the original TCU's IT-CAN connection and connect the vehicle's **CAN-H to the Waveshare H terminal**, and **CAN-L to the L terminal**. The onboard CAN controller/transceiver uses **GPIO15 for TX and GPIO16 for RX**, as configured in `simppeliTCU/canInterface.cpp`. These are internal controller signals; the vehicle CAN pair connects to the **H/L terminals**, not directly to GPIO15/16. This fork does not use the upstream LilyGO GPIO7/6 assignments.
+Disconnect the original TCU's IT-CAN connection and connect the vehicle's **CAN-H to the Waveshare H terminal**, and **CAN-L to the L terminal**. The onboard CAN controller/transceiver uses **GPIO15 for TX and GPIO16 for RX**, selected centrally in `simppeliTCU/hardware.h`. These are internal controller signals; the vehicle CAN pair connects to the **H/L terminals**, not directly to GPIO15/16. This fork defaults to the Waveshare board; LilyGO GPIO7/6 is used only when explicitly selecting `BOARD=LILYGO_T2CAN`.
 
 ### A7670E modem wiring through SH1.0
 
@@ -96,11 +98,12 @@ Check `lte-status` and `mqtt-status` after reboot. Wi-Fi remains preferred; LTE 
 The device configuration (Wi-Fi, MQTT credentials, etc.) is stored in persistent memory. You configure the system through the USB serial connection using a terminal (such as the Arduino IDE Serial Monitor, PuTTY, or similar) set to **115200 baud** with Newline (`\n`) or Carriage Return (`\r`) enabled.
 
 Available commands:
-* `list` - Shows all current configuration properties.
+* `list` - Shows all current configuration properties (including firmware version).
 * `get <key>` - Prints the current value of the specified key.
 * `set <key> <value>` - Updates the specified key with a new value (saved persistently).
 * `lte-status` - Shows runtime LTE state, active uplink, last error and cached modem diagnostics.
 * `mqtt-status` - Shows MQTT connection state, broker, active uplink and last connection result without reconnecting.
+* `version` - Prints the current firmware version and git commit hash.
 * `reboot` - Restarts the device to apply the changes immediately.
 * `factory-reset` - Clears all configuration settings and restarts the device.
 
@@ -129,6 +132,7 @@ reboot
 * `mqtt_tls` (Enable/disable TLS for MQTT connection; default: `true`)
 * `locking_enabled` (Enable door lock/unlock functionality; default: `false`)
 * `hass_discovery` (Enable/disable Home Assistant discovery messages; default: `true`)
+* `nag_dismiss` (Automatic infotainment nag screen dismissal on AV-CAN; forced off on Waveshare, enabling requires a dual-CAN build and AV-CAN wiring)
 
 **Wi-Fi Modes:**
 * **STA Mode:** Active when `ssid` is configured. The device connects to your home/garage Wi-Fi.
@@ -148,10 +152,20 @@ For instructions on how to compile and upload the firmware using the Arduino IDE
 
 ## Flashing Pre-compiled Binaries
 
-For instructions on downloading and flashing pre-compiled release binaries (using GUI tools or `esptool`), please refer to the [Pre-compiled Binaries Flashing Guide](docs/flashing.md).
+For instructions on downloading and flashing pre-compiled release binaries (using GUI tools or `esptool`), please refer to the [Pre-compiled Binaries Flashing Guide](docs/flashing.md). See [CHANGELOG.md](CHANGELOG.md) for a history of features and changes in each release.
 
 ## The CAN communication
 Please see the [CAN Communication Details](docs/can.md) document for information regarding CAN bus messages, commands, known issues, and limitations related to the IT-CAN integration.
+
+### Dual CAN bus support (LilyGO T-2Can)
+The firmware supports two CAN interfaces:
+
+1. **Primary CAN (TWAI):** The ESP32's built-in CAN controller (Port B: TX 7, RX 6).
+2. **Second CAN (MCP2515):** An external MCP2515 CAN controller connected over SPI, available on the LilyGO T-2Can board.
+
+All outgoing CAN messages are sent on **both** buses, and incoming messages received on **either** bus are processed identically. This allows the device to be connected to two separate CAN buses at the same time. e.g. IT CAN and AV CAN.
+
+The second CAN interface is enabled by default **only when building for LilyGO** and requires the `autowp-mcp2515` library (see the [Compiling and Uploading Guide](docs/compiling.md)). It can be disabled with the compiler flag `-DUSE_SECOND_CAN=0`. Waveshare builds force it off and do not require this library. Pin assignments for both CAN interfaces (TWAI and MCP2515) are configured centrally in `simppeliTCU/hardware.h`.
 
 ## License & Disclaimer (MIT License)
 This project is licensed under the MIT License. 

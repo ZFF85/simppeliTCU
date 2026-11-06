@@ -10,7 +10,7 @@ Check the pin labels and electrical requirements for your exact breakout before 
 * Connect a common ground between the modem supply, modem and ESP32.
 * Connect ESP32 TX to modem RX, and ESP32 RX to modem TX, using level conversion if required by the breakout.
 * `lte_tx` and `lte_rx` refer to **ESP32 GPIO numbers**, not modem pin numbers. No modem GPIO is selected by default. Choose exposed, otherwise unused pins from your Waveshare board's pinout.
-* The firmware reserves CAN GPIO15/16, USB GPIO19/20, flash/PSRAM GPIO26..37, UART0 GPIO43/44 and boot strapping pins. It also rejects identical TX and RX assignments at startup.
+* The default Waveshare build reserves CAN GPIO15/16, USB GPIO19/20, flash/PSRAM GPIO26..37, UART0 GPIO43/44 and boot strapping pins. When selecting LilyGO, its CAN GPIO7/6 and onboard MCP2515 SPI/control pins are reserved instead. Identical TX and RX assignments are rejected at startup.
 * The modem must be powered on and respond to `AT` before PPP initialization can succeed. Use the breakout's documented automatic startup or power button. This version does not drive PWRKEY/reset or use the modem USB port.
 * Activate the SIM and data service, and disable its SIM PIN request in a phone first. The firmware does not send or guess SIM PINs.
 

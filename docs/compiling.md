@@ -2,7 +2,7 @@
 
 ## Compiling and Uploading with Arduino IDE
 
-To compile and upload the firmware for the Lilygo T-2CAN board using the Arduino IDE, please configure the following settings:
+This fork defaults to **Waveshare ESP32-S3-RS485-CAN**. The upstream compile-time board selection is retained in `simppeliTCU/hardware.h`; LilyGO must be selected explicitly. For either ESP32-S3 board, configure the Arduino IDE as follows:
 
 1. **Board Selection**: Select **ESP32S3 Dev Module** as your target board.
    * If you haven't set up the ESP32 core yet, please follow the [LilyGO T-2CAN Quick Start Guide](https://wiki.lilygo.cc/get_started/en/High_speed/T-2Can/T-2Can.html#Quick-Start) to download the required board files.
@@ -25,14 +25,23 @@ If you prefer using the command line, you can build and flash the firmware using
    arduino-cli lib install PubSubClient
    ```
 
-2. **Compile the sketch** (ensuring USB CDC On Boot is enabled):
+   Only LilyGO dual-CAN builds also require `arduino-cli lib install autowp-mcp2515`. Waveshare builds disable the MCP2515 interface automatically.
+
+2. **Compile the sketch for Waveshare** (USB CDC On Boot enabled, optionally embedding the current git commit hash):
    ```bash
-   arduino-cli compile --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc simppeliTCU
+   arduino-cli compile --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc \
+     --build-path /tmp/simppeli-tcu-flash \
+     --build-property "compiler.cpp.extra_flags=-DBOARD=WAVESHARE_ESP32_S3_RS485_CAN -DGIT_HASH_RAW=$(git rev-parse --short HEAD)" \
+     simppeliTCU
    ```
+   *(If compiled in Arduino IDE or without `GIT_HASH_RAW`, the version string in `simppeliTCU/version.h` defaults to showing `(local)` as the commit hash.)*
+
+   For LilyGO, replace `WAVESHARE_ESP32_S3_RS485_CAN` with `LILYGO_T2CAN`. The firmware pins and second-CAN availability follow this setting. LTE UART pins must not overlap either board's CAN/SPI wiring.
 
 3. **Upload to the board** (replace `<PORT>` with your COM port, e.g., `COM3` or `/dev/cu.usbserial...`):
    ```bash
-   arduino-cli upload -p <PORT> --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc simppeliTCU
+   arduino-cli upload -p <PORT> --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc \
+     --build-path /tmp/simppeli-tcu-flash simppeliTCU
    ```
 
 ## Running Unit Tests
@@ -71,4 +80,16 @@ g++ -std=c++17 -Wall -Wextra -Werror -IsimppeliTCU test/test_uplinkPolicy.cpp -o
 /tmp/simppeli-uplink-policy-tests
 ```
 
+## Creating a New Release
 
+Releases are created automatically by GitHub Actions when the version is bumped on the `main` branch:
+
+1. Update [`CHANGELOG.md`](../CHANGELOG.md): move or add the changes under a new version heading (e.g., `## [v0.1.1] - YYYY-MM-DD`).
+2. Update [`simppeliTCU/version.h`](../simppeliTCU/version.h): bump `FW_VERSION` to the matching version string (e.g., `#define FW_VERSION "v0.1.1"`).
+3. Commit and push/merge the changes to `main`.
+
+When the workflow runs on `main` and detects that a git tag for `FW_VERSION` does not yet exist, it automatically:
+- Embeds the short git commit hash into the firmware binaries.
+- Creates and pushes the annotated git tag (e.g., `v0.1.1`).
+- Extracts the matching release notes from `CHANGELOG.md`.
+- Publishes a **GitHub Release** with the compiled firmware binaries (`.bin` and `.zip`) for all supported boards.

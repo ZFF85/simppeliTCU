@@ -1,9 +1,19 @@
 #include <gtest/gtest.h>
+#include <cstring>
+#include <vector>
 #include "../simppeliTCU/canLeafZE1.h"
 #include "../simppeliTCU/vehicleTypes.h"
 
+struct SentCANMessage {
+    uint32_t id;
+    uint8_t len;
+    uint8_t data[8];
+};
+
 // Mock callback functions to capture parsed values - these are defined in test_canInterface_stubs.cpp
+extern std::vector<SentCANMessage> sentCANMessages;
 extern bool carIsAwake;
+extern int nagScreenPopupCount;
 extern float lastSOC_value;
 extern float lastTemp_value;
 extern bool lastCharging_value;
@@ -39,6 +49,8 @@ namespace {
         lastFanSpeed_value = 0.0f;
         lastHeating_value = false;
         lastCooling_value = false;
+        nagScreenPopupCount = 0;
+        sentCANMessages.clear();
     }
 }
 
@@ -289,4 +301,178 @@ TEST(CanLeafZE1Parsing, UnknownMessageID) {
     EXPECT_FALSE(lastCharging_value);
     EXPECT_EQ(lastChargerState_value, ChargerState::IDLE);
     EXPECT_FALSE(lastHVAC_value);
+}
+
+// Test nag screen popup detection and one-shot per boot cycle
+TEST(CanLeafZE1Parsing, NagScreenPopup_DetectionAndRearm) {
+    resetMocks();
+
+    uint8_t displaySeq40[] = {0x10, 0x2A, 0x40, 0x20, 0x0D, 0x00, 0x00, 0x01};
+    uint8_t popup62C[]     = {0x10, 0x18, 0x40, 0x20, 0x0D, 0x87, 0x81, 0x85};
+
+    // Unarmed by default (e.g. mid-drive MCU reset): neither 0x628 nor 0x62C triggers
+    handleReceivedMessage(0x628, displaySeq40, sizeof(displaySeq40));
+    handleReceivedMessage(0x62C, popup62C, sizeof(popup62C));
+    EXPECT_EQ(nagScreenPopupCount, 0);
+
+    // Cluster boot init frame (single-frame seq 0) arms popup detection and resets sequence counter to 1
+    uint8_t clusterBoot0[] = {0x07, 0x00, 0x00, 0x20, 0x00, 0x01, 0x09, 0x00};
+    uint8_t clusterBoot1[] = {0x07, 0x10, 0x00, 0x2C, 0x00, 0x01, 0x09, 0x00};
+    handleReceivedMessage(0x683, clusterBoot0, sizeof(clusterBoot0));
+    handleReceivedMessage(0x683, clusterBoot1, sizeof(clusterBoot1));
+    EXPECT_EQ(nagScreenPopupCount, 0);
+
+    // Earlier 0x628 frames (seq 0x20 and seq 0x30) must not trigger popup callback
+    uint8_t displayInit[]  = {0x04, 0x00, 0x00, 0x21, 0xD0, 0xFF, 0xFF, 0xFF};
+    uint8_t displayEarly[] = {0x10, 0x09, 0x20, 0x2C, 0x0D, 0x88, 0x02, 0x00};
+    uint8_t displaySeq30[] = {0x10, 0x24, 0x30, 0x20, 0x0D, 0x00, 0x00, 0x01};
+    handleReceivedMessage(0x628, displayInit, sizeof(displayInit));
+    handleReceivedMessage(0x628, displayEarly, sizeof(displayEarly));
+    handleReceivedMessage(0x628, displaySeq30, sizeof(displaySeq30));
+    EXPECT_EQ(nagScreenPopupCount, 0);
+
+    // 0x628 seq 0x40 triggers popup callback once
+    handleReceivedMessage(0x628, displaySeq40, sizeof(displaySeq40));
+    EXPECT_EQ(nagScreenPopupCount, 1);
+
+    // Consecutive frames on 0x628 with 0x00 upper nibble in byte 1 and subsequent 0x62C frames must not re-trigger
+    uint8_t consecutiveFrame[] = {0x24, 0x00, 0x20, 0x00, 0x20, 0x00, 0x00, 0x00};
+    handleReceivedMessage(0x628, consecutiveFrame, sizeof(consecutiveFrame));
+    handleReceivedMessage(0x62C, popup62C, sizeof(popup62C));
+    EXPECT_EQ(nagScreenPopupCount, 1);
+
+    // Re-arm via 0x628 single-frame boot init (seq 0) and trigger via 0x62C (when radio 0x628 seq 0x40 is absent)
+    uint8_t displayRadioOff[] = {0x10, 0x08, 0x30, 0x2A, 0x0D, 0x00, 0x13, 0x24};
+    uint8_t displayRadioOffCf[] = {0x21, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+    handleReceivedMessage(0x628, displayInit, sizeof(displayInit));
+    handleReceivedMessage(0x628, displayRadioOff, sizeof(displayRadioOff));
+    handleReceivedMessage(0x628, displayRadioOffCf, sizeof(displayRadioOffCf));
+    EXPECT_EQ(nagScreenPopupCount, 1);
+    handleReceivedMessage(0x62C, popup62C, sizeof(popup62C));
+    EXPECT_EQ(nagScreenPopupCount, 2);
+}
+
+// Test DISMISS_NAG sequence timing and rolling sequence counter on 0x683
+TEST(CanLeafZE1Parsing, DismissNag_SequenceExecution) {
+    resetMocks();
+
+    // Simulate cluster boot init (seq 0 -> 1) and ensure 0xE0/0xF0 frames on 0x683 are ignored
+    uint8_t clusterBoot0[] = {0x07, 0x00, 0x00, 0x20, 0x00, 0x01, 0x09, 0x00};
+    uint8_t clusterBoot1[] = {0x07, 0x10, 0x00, 0x2C, 0x00, 0x01, 0x09, 0x00};
+    uint8_t keepAlive[]    = {0xF0, 0x64, 0x0A, 0x01, 0xFF, 0xFF, 0xFF, 0xFF};
+    uint8_t ackFrame[]     = {0xE0, 0x30, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+    handleReceivedMessage(0x683, clusterBoot0, sizeof(clusterBoot0));
+    handleReceivedMessage(0x683, clusterBoot1, sizeof(clusterBoot1));
+    handleReceivedMessage(0x683, keepAlive, sizeof(keepAlive));
+    handleReceivedMessage(0x683, ackFrame, sizeof(ackFrame));
+
+    startSequence(CanSequence::DISMISS_NAG, 1000);
+    EXPECT_EQ(activeSequence, CanSequence::DISMISS_NAG);
+
+    // Step 0: 1500 ms settle wait (no frames sent during wait)
+    EXPECT_EQ(manageCANSequence(1000), CanSeqResult::PROCESSING);
+    EXPECT_TRUE(sentCANMessages.empty());
+    EXPECT_EQ(manageCANSequence(2499), CanSeqResult::PROCESSING);
+    EXPECT_TRUE(sentCANMessages.empty());
+
+    // t = 2500 ms (T + 0 ms): Frame 1 (press, seq 0x20)
+    EXPECT_EQ(manageCANSequence(2500), CanSeqResult::PROCESSING);
+    ASSERT_EQ(sentCANMessages.size(), 1u);
+    const uint8_t expected1[8] = {0x04, 0x20, 0x20, 0x0D, 0x88, 0xFF, 0xFF, 0xFF};
+    EXPECT_EQ(sentCANMessages[0].id, 0x683u);
+    EXPECT_EQ(0, std::memcmp(sentCANMessages[0].data, expected1, 8));
+
+    // t = 2600 ms (T + 100 ms): Frame 2 (hold, seq 0x30)
+    EXPECT_EQ(manageCANSequence(2599), CanSeqResult::PROCESSING);
+    EXPECT_EQ(sentCANMessages.size(), 1u);
+    EXPECT_EQ(manageCANSequence(2600), CanSeqResult::PROCESSING);
+    ASSERT_EQ(sentCANMessages.size(), 2u);
+    const uint8_t expected2[8] = {0x04, 0x30, 0x20, 0x0D, 0x88, 0xFF, 0xFF, 0xFF};
+    EXPECT_EQ(sentCANMessages[1].id, 0x683u);
+    EXPECT_EQ(0, std::memcmp(sentCANMessages[1].data, expected2, 8));
+
+    // t = 2650 ms (T + 150 ms): Frame 3 (release, seq 0x40)
+    EXPECT_EQ(manageCANSequence(2649), CanSeqResult::PROCESSING);
+    EXPECT_EQ(sentCANMessages.size(), 2u);
+    EXPECT_EQ(manageCANSequence(2650), CanSeqResult::PROCESSING);
+    ASSERT_EQ(sentCANMessages.size(), 3u);
+    const uint8_t expected3[8] = {0x04, 0x40, 0x20, 0x0D, 0x08, 0xFF, 0xFF, 0xFF};
+    EXPECT_EQ(sentCANMessages[2].id, 0x683u);
+    EXPECT_EQ(0, std::memcmp(sentCANMessages[2].data, expected3, 8));
+
+    // t = 2700 ms: sequence finishes
+    EXPECT_EQ(manageCANSequence(2700), CanSeqResult::SEQUENCE_FINISHED);
+    EXPECT_EQ(activeSequence, CanSequence::NONE);
+}
+
+// Test nag screen dismissal deferred while car is in reverse (reverse camera active)
+TEST(CanLeafZE1Parsing, NagScreenPopup_DeferredWhileInReverse) {
+    resetMocks();
+
+    uint8_t clusterBoot0[]  = {0x07, 0x00, 0x00, 0x20, 0x00, 0x01, 0x09, 0x00};
+    uint8_t displayInit[]   = {0x04, 0x00, 0x00, 0x21, 0xD0, 0xFF, 0xFF, 0xFF};
+    uint8_t displaySeq40[]  = {0x10, 0x2A, 0x40, 0x20, 0x0D, 0x00, 0x00, 0x01};
+    uint8_t popup62CInit[]  = {0x03, 0x00, 0x00, 0x21, 0xFF, 0xFF, 0xFF, 0xFF};
+    uint8_t popup62C[]      = {0x10, 0x18, 0x40, 0x20, 0x0D, 0x87, 0x81, 0x85};
+    uint8_t shifterPark[]   = {0x08, 0x00, 0x00};
+    uint8_t shifterTrans[]  = {0x00, 0x00, 0x00};
+    uint8_t shifterRev[]    = {0x10, 0x00, 0x00};
+    uint8_t shifterDrive[]  = {0x20, 0x00, 0x00};
+
+    // Boot init in Park, then immediate shift through transition (0x00) into Reverse (0x10)
+    handleReceivedMessage(0x683, clusterBoot0, sizeof(clusterBoot0));
+    handleReceivedMessage(0x628, displayInit, sizeof(displayInit));
+    handleReceivedMessage(0x421, shifterPark, sizeof(shifterPark));
+    handleReceivedMessage(0x421, shifterTrans, sizeof(shifterTrans));
+    handleReceivedMessage(0x421, shifterRev, sizeof(shifterRev));
+    EXPECT_EQ(nagScreenPopupCount, 0);
+
+    // Both 0x628 (seq 0x40) and 0x62C arrive while reverse camera is active: must defer, not trigger
+    handleReceivedMessage(0x628, displaySeq40, sizeof(displaySeq40));
+    handleReceivedMessage(0x62C, popup62CInit, sizeof(popup62CInit));
+    handleReceivedMessage(0x62C, popup62C, sizeof(popup62C));
+    EXPECT_EQ(nagScreenPopupCount, 0);
+
+    // Passing through gate transition (0x00) out of Reverse must wait for engaged non-reverse gear
+    handleReceivedMessage(0x421, shifterTrans, sizeof(shifterTrans));
+    EXPECT_EQ(nagScreenPopupCount, 0);
+
+    // Engaging Drive (0x20) exits reverse camera and triggers nag screen popup dismissal once
+    handleReceivedMessage(0x421, shifterDrive, sizeof(shifterDrive));
+    EXPECT_EQ(nagScreenPopupCount, 1);
+
+    // Subsequent reverse/drive shifts in the same driving session must not re-trigger
+    handleReceivedMessage(0x421, shifterRev, sizeof(shifterRev));
+    handleReceivedMessage(0x421, shifterDrive, sizeof(shifterDrive));
+    EXPECT_EQ(nagScreenPopupCount, 1);
+}
+
+// Test shifting into reverse while DISMISS_NAG sequence is waiting aborts and re-triggers on exit
+TEST(CanLeafZE1Parsing, NagScreenPopup_ReverseAbortsActiveDismissAndRetriggers) {
+    resetMocks();
+
+    uint8_t clusterBoot0[] = {0x07, 0x00, 0x00, 0x20, 0x00, 0x01, 0x09, 0x00};
+    uint8_t displaySeq40[] = {0x10, 0x2A, 0x40, 0x20, 0x0D, 0x00, 0x00, 0x01};
+    uint8_t shifterRev[]   = {0x10, 0x00, 0x00};
+    uint8_t shifterDrive[] = {0x20, 0x00, 0x00};
+
+    handleReceivedMessage(0x683, clusterBoot0, sizeof(clusterBoot0));
+    handleReceivedMessage(0x628, displaySeq40, sizeof(displaySeq40));
+    EXPECT_EQ(nagScreenPopupCount, 1);
+
+    // Start DISMISS_NAG sequence (in 1500 ms settle wait)
+    startSequence(CanSequence::DISMISS_NAG, 1000);
+    EXPECT_EQ(activeSequence, CanSequence::DISMISS_NAG);
+    EXPECT_EQ(manageCANSequence(1500), CanSeqResult::PROCESSING);
+    EXPECT_TRUE(sentCANMessages.empty());
+
+    // Driver shifts into Reverse during the 1500 ms wait: sequence is aborted and deferred
+    handleReceivedMessage(0x421, shifterRev, sizeof(shifterRev));
+    EXPECT_EQ(activeSequence, CanSequence::NONE);
+    EXPECT_EQ(manageCANSequence(2500), CanSeqResult::IDLE);
+    EXPECT_TRUE(sentCANMessages.empty());
+
+    // Driver shifts out of Reverse into Drive: popup callback fires again
+    handleReceivedMessage(0x421, shifterDrive, sizeof(shifterDrive));
+    EXPECT_EQ(nagScreenPopupCount, 2);
 }
