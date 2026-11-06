@@ -112,9 +112,6 @@ static ConfigBool       conf_lte_enabled("lte_enabled", false);
 static ConfigString<64> conf_lte_apn("lte_apn", "");
 static ConfigInt        conf_lte_tx("lte_tx", -1);
 static ConfigInt        conf_lte_rx("lte_rx", -1);
-static ConfigBool       conf_syslog_enabled("syslog_enabled", false);
-static ConfigString<64> conf_syslog_host("syslog_host", "");
-static ConfigInt        conf_syslog_port("syslog_port", 514);
 static ConfigString<64> conf_hostName("hostName", "leaf");
 static ConfigString<64> conf_mqtt_server("mqtt_server", "");
 static ConfigInt        conf_mqtt_port("mqtt_port", 8883);
@@ -142,9 +139,6 @@ void initConfiguration() {
     conf_lte_apn.load();
     conf_lte_tx.load();
     conf_lte_rx.load();
-    conf_syslog_enabled.load();
-    conf_syslog_host.load();
-    conf_syslog_port.load();
     conf_hostName.load();
     conf_mqtt_server.load();
     conf_mqtt_port.load();
@@ -231,19 +225,6 @@ int getLteRx() { return conf_lte_rx.get(); }
 ConfigStatus setLteRx(int value) {
     if (!isLteGpioValid(value)) return ConfigStatus::ERROR_LTE_GPIO;
     return conf_lte_rx.set(value);
-}
-
-bool getSyslogEnabled() { return conf_syslog_enabled.get(); }
-ConfigStatus setSyslogEnabled(bool value) { return conf_syslog_enabled.set(value); }
-const char* getSyslogHost() { return conf_syslog_host.get(); }
-ConfigStatus setSyslogHost(const char* value) {
-    if (!validNetworkName(value)) return ConfigStatus::ERROR_SYSLOG_HOST;
-    return conf_syslog_host.set(value);
-}
-int getSyslogPort() { return conf_syslog_port.get(); }
-ConfigStatus setSyslogPort(int value) {
-    if (value < 1 || value > 65535) return ConfigStatus::ERROR_PORT_RANGE;
-    return conf_syslog_port.set(value);
 }
 
 const char* getHostName() { return conf_hostName.get(); }

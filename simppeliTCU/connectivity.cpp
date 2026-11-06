@@ -1,6 +1,5 @@
 #include "connectivity.h"
 #include "configuration.h"
-#include "systemLog.h"
 #include <WiFi.h>
 #include <PPP.h>
 #include <atomic>
@@ -140,7 +139,7 @@ void selectUplink(Uplink selected) {
     restoreDns(selected, selected != previous);
     activeUplink.store(selected);
     if (selected != previous) {
-        systemLog("[Network] Uplink: %s", selected == Uplink::WIFI ? "WiFi" :
+        Serial.printf("[Network] Uplink: %s\n", selected == Uplink::WIFI ? "WiFi" :
                       selected == Uplink::LTE ? "4G" : "offline");
     }
 }
@@ -170,7 +169,7 @@ void modemTask(void*) {
                 snprintf(modemStatus.ip, sizeof(modemStatus.ip), "%s", ip.c_str());
                 portEXIT_CRITICAL(&statusMux);
                 setModemState(ModemState::ONLINE, "none");
-                systemLog("[LTE] PPP connected, IP: %s", ip.c_str());
+                Serial.printf("[LTE] PPP connected, IP: %s\n", ip.c_str());
             }
             hadIp = true;
             // Keep an established PPP session on standby while Wi-Fi is used.
@@ -182,7 +181,7 @@ void modemTask(void*) {
         if (dataMode) {
             failed = hadIp || uint32_t(now - stageStarted) >= 60000;
             if (failed) failureReason = hadIp ? "PPP connection lost" : "PPP IP negotiation timed out";
-            if (failed) systemLog("[LTE] PPP disconnected or IP negotiation timed out");
+            if (failed) Serial.println("[LTE] PPP disconnected or IP negotiation timed out");
         }
 
         if (!failed && !dataMode && policy.shouldStartLte(now)) {
@@ -193,7 +192,7 @@ void modemTask(void*) {
                 portENTER_CRITICAL(&statusMux);
                 ++modemStatus.attempts;
                 portEXIT_CRITICAL(&statusMux);
-                systemLog("[LTE] No WiFi; starting modem on UART1 (115200 baud)");
+                Serial.println("[LTE] No WiFi; starting modem on UART1 (115200 baud)");
                 bool configured = PPP.setApn(apn) && PPP.setPin(nullptr) &&
                                   PPP.setPins(txPin, rxPin);
                 // The A7670 uses standard PPP AT commands. DATA mode avoids
@@ -206,7 +205,7 @@ void modemTask(void*) {
                 if (failed) failureReason = configured ? "PPP.begin failed (AT/SIM/driver initialization; exact cause unavailable)" :
                                                         "PPP APN/PIN/UART configuration failed";
                 else setModemState(ModemState::WAIT_REGISTRATION);
-                if (failed) systemLog("[LTE] Modem initialization failed; check power, UART and SIM PIN (must be disabled)");
+                if (failed) Serial.println("[LTE] Modem initialization failed; check power, UART and SIM PIN (must be disabled)");
             }
 
             if (initialized && uint32_t(now - lastAttachPoll) >= 5000) {
@@ -220,16 +219,16 @@ void modemTask(void*) {
                 modemStatus.signalSampleAt = sampledAt;
                 portEXIT_CRITICAL(&statusMux);
                 if (attached) {
-                    systemLog("[LTE] Registered; starting PPP data connection");
+                    Serial.println("[LTE] Registered; starting PPP data connection");
                     setModemState(ModemState::CONNECTING);
                     pppHasIp.store(false);
                     dataMode = PPP.mode(ESP_MODEM_MODE_DATA);
                     stageStarted = millis();
                     failed = !dataMode;
                     if (failed) failureReason = "Could not enter PPP data mode";
-                    if (failed) systemLog("[LTE] Data mode failed; check APN and SIM data service");
+                    if (failed) Serial.println("[LTE] Data mode failed; check APN and SIM data service");
                 } else if (uint32_t(now - stageStarted) >= 120000) {
-                    systemLog("[LTE] Network registration timed out; retrying later");
+                    Serial.println("[LTE] Network registration timed out; retrying later");
                     failed = true;
                     failureReason = "Mobile registration timed out";
                 }
@@ -265,12 +264,12 @@ void setupConnectivity() {
     rxPin = getLteRx();
     snprintf(apn, sizeof(apn), "%s", getLteApn());
     if (!getLteEnabled()) {
-        systemLog("[LTE] Disabled");
+        Serial.println("[LTE] Disabled");
         return;
     }
     if (!getLteApn()[0] || txPin < 0 || rxPin < 0 || txPin == rxPin ||
         !isLteGpioValid(txPin) || !isLteGpioValid(rxPin)) {
-        systemLog("[LTE] Disabled: set lte_apn and distinct, free lte_tx/lte_rx GPIOs, then reboot");
+        Serial.println("[LTE] Disabled: set lte_apn and distinct, free lte_tx/lte_rx GPIOs, then reboot");
         setModemState(ModemState::CONFIG_ERROR, "Missing APN or invalid/distinct UART GPIOs required");
         return;
     }
@@ -283,7 +282,7 @@ void setupConnectivity() {
     if (xTaskCreate(modemTask, "lte", 6144, nullptr, 1, nullptr) != pdPASS) {
         taskRunning.store(false);
         setModemState(ModemState::CONFIG_ERROR, "Could not create modem task");
-        systemLog("[LTE] Could not create modem task; WiFi remains available");
+        Serial.println("[LTE] Could not create modem task; WiFi remains available");
     }
 }
 

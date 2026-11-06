@@ -35,6 +35,7 @@ std::string getSession(PubSubClient& client) {
 } // namespace
 
 ESPClass ESP;
+SerialMock Serial;
 CanSequence activeSequence = CanSequence::NONE;
 unsigned long millis() { return now; }
 void delay(unsigned long ms) { now += ms; }
@@ -44,7 +45,6 @@ void esp_fill_random(void* output, size_t length) {
     auto* data = static_cast<uint8_t*>(output);
     while (length--) *data++ = ++value;
 }
-void systemLog(const char*, ...) {}
 Uplink getActiveUplink() { return Uplink::WIFI; }
 const char* getWifiSSID() { return stored.ssid; }
 const char* getWifiPassword() { return stored.password; }
@@ -54,9 +54,6 @@ bool getLteEnabled() { return stored.lteEnabled; }
 const char* getLteApn() { return stored.apn; }
 int getLteTx() { return stored.tx; }
 int getLteRx() { return stored.rx; }
-bool getSyslogEnabled() { return stored.syslogEnabled; }
-const char* getSyslogHost() { return stored.syslogHost; }
-int getSyslogPort() { return stored.syslogPort; }
 bool configurationStorageReady() { return storageReady; }
 #define MOCK_STRING_SETTER(name, member) \
 ConfigStatus name(const char* value) { ++writes; strcpy(stored.member, value); return ConfigStatus::OK; }
@@ -67,12 +64,9 @@ MOCK_STRING_SETTER(setWifiPassword, password)
 MOCK_STRING_SETTER(setFallbackSSID, fallbackSsid)
 MOCK_STRING_SETTER(setFallbackPassword, fallbackPassword)
 MOCK_STRING_SETTER(setLteApn, apn)
-MOCK_STRING_SETTER(setSyslogHost, syslogHost)
 MOCK_VALUE_SETTER(setLteEnabled, bool, lteEnabled)
 MOCK_VALUE_SETTER(setLteTx, int, tx)
 MOCK_VALUE_SETTER(setLteRx, int, rx)
-MOCK_VALUE_SETTER(setSyslogEnabled, bool, syslogEnabled)
-MOCK_VALUE_SETTER(setSyslogPort, int, syslogPort)
 
 TEST(RemoteController, StagingRedactionReplayAndIdleApply) {
     strcpy(stored.ssid, "Home");

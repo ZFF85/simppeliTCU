@@ -15,7 +15,6 @@ enum class ConfigStatus {
     ERROR_PORT_RANGE,
     ERROR_LTE_GPIO,
     ERROR_LTE_APN,
-    ERROR_SYSLOG_HOST,
     ERROR_STORAGE
 };
 
@@ -53,13 +52,6 @@ ConfigStatus setLteTx(int value);
 int getLteRx();
 ConfigStatus setLteRx(int value);
 bool isLteGpioValid(int value);
-
-bool getSyslogEnabled();
-ConfigStatus setSyslogEnabled(bool value);
-const char* getSyslogHost();
-ConfigStatus setSyslogHost(const char* value);
-int getSyslogPort();
-ConfigStatus setSyslogPort(int value);
 
 const char* getHostName();
 ConfigStatus setHostName(const char* value);

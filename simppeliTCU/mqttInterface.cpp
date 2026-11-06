@@ -7,7 +7,6 @@
 #include "stringBuffer.h"
 #include "hassDiscovery.h"
 #include "remoteConfig.h"
-#include "systemLog.h"
 
 NetworkClient espClient; // For non-TLS, over Wi-Fi or PPP
 NetworkClientSecure espClientSecure; // For TLS, over Wi-Fi or PPP
@@ -174,7 +173,7 @@ boolean reconnectMQTT() {
 
   lastMqttConnectResult = mqttClient.state();
   if (connected) {
-    systemLog("[MQTT] Connected");
+    Serial.println("[MQTT] Connected");
     
     // Mark as connected in Retained message (for OVMS app to see vehicle is online)
     mqttClient.publish(willTopic.c_str(), (const uint8_t*)"yes", 3, true);
@@ -203,7 +202,7 @@ boolean reconnectMQTT() {
     
     return true;
   }
-  systemLog("[MQTT] Connect failed: %d (%s)", lastMqttConnectResult, mqttStateName(lastMqttConnectResult));
+  Serial.printf("[MQTT] Connect failed: %d (%s)\n", lastMqttConnectResult, mqttStateName(lastMqttConnectResult));
   return false;
 }
 
@@ -232,7 +231,7 @@ void manageMQTT() {
   static Uplink previousUplink = Uplink::OFFLINE;
   Uplink uplink = getActiveUplink();
   if (uplink != previousUplink) {
-    systemLog("[MQTT] Uplink changed; reconnecting client");
+    Serial.println("[MQTT] Uplink changed; reconnecting client");
     // TCP sockets do not migrate between interfaces; reconnect and resubscribe.
     mqttClient.disconnect();
     espClient.stop();

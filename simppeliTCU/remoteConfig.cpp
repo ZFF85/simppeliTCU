@@ -2,7 +2,6 @@
 #include "remoteConfigProtocol.h"
 #include "configuration.h"
 #include "connectivity.h"
-#include "systemLog.h"
 #include "canLeafZE1.h"
 #include <PubSubClient.h>
 #include <cJSON.h>
@@ -26,9 +25,6 @@ RemoteSettings currentSettings() {
     snprintf(settings.apn, sizeof(settings.apn), "%s", getLteApn());
     settings.tx = getLteTx();
     settings.rx = getLteRx();
-    settings.syslogEnabled = getSyslogEnabled();
-    snprintf(settings.syslogHost, sizeof(settings.syslogHost), "%s", getSyslogHost());
-    settings.syslogPort = getSyslogPort();
     return settings;
 }
 
@@ -49,9 +45,6 @@ cJSON* publicSettings(const RemoteSettings& settings) {
     cJSON_AddStringToObject(object, "lte_apn", settings.apn);
     cJSON_AddNumberToObject(object, "lte_tx", settings.tx);
     cJSON_AddNumberToObject(object, "lte_rx", settings.rx);
-    cJSON_AddBoolToObject(object, "syslog_enabled", settings.syslogEnabled);
-    cJSON_AddStringToObject(object, "syslog_host", settings.syslogHost);
-    cJSON_AddNumberToObject(object, "syslog_port", settings.syslogPort);
     return object;
 }
 
@@ -111,7 +104,7 @@ bool handleRemoteConfig(PubSubClient& client, const char* prefix, const char* to
         staged = request.settings;
         hasStaged = true;
         reply(client, prefix, true, "staged in RAM; send apply to save and reboot");
-        systemLog("[Config] Remote network settings staged (values redacted)");
+        Serial.println("[Config] Remote network settings staged (values redacted)");
         return true;
     }
     if (!hasStaged) error = "no staged settings";
@@ -141,11 +134,8 @@ void manageRemoteConfig() {
               setFallbackPassword(staged.fallbackPassword) == ConfigStatus::OK &&
               setLteEnabled(staged.lteEnabled) == ConfigStatus::OK &&
               setLteApn(staged.apn) == ConfigStatus::OK &&
-              setLteTx(staged.tx) == ConfigStatus::OK && setLteRx(staged.rx) == ConfigStatus::OK &&
-              setSyslogEnabled(staged.syslogEnabled) == ConfigStatus::OK &&
-              setSyslogHost(staged.syslogHost) == ConfigStatus::OK &&
-              setSyslogPort(staged.syslogPort) == ConfigStatus::OK;
-    systemLog(ok ? "[Config] Remote settings saved; rebooting" : "[Config] Settings write failed; rebooting to load stored configuration");
+              setLteTx(staged.tx) == ConfigStatus::OK && setLteRx(staged.rx) == ConfigStatus::OK;
+    Serial.println(ok ? "[Config] Remote settings saved; rebooting" : "[Config] Settings write failed; rebooting to load stored configuration");
     delay(100);
     ESP.restart();
 }

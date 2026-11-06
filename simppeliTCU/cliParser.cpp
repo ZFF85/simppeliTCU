@@ -3,7 +3,6 @@
 #include "configuration.h"
 #include "connectivity.h"
 #include "mqttInterface.h"
-#include "systemLog.h"
 #include <errno.h>
 
 static char inputBuffer[128];
@@ -29,9 +28,6 @@ void executeCommand(char* cmd) {
         Serial.printf("  lte_apn: %s\n", getLteApn());
         Serial.printf("  lte_tx: %d\n", getLteTx());
         Serial.printf("  lte_rx: %d\n", getLteRx());
-        Serial.printf("  syslog_enabled: %s\n", getSyslogEnabled() ? "true" : "false");
-        Serial.printf("  syslog_host: %s\n", getSyslogHost());
-        Serial.printf("  syslog_port: %d\n", getSyslogPort());
         Serial.printf("  hostName: %s\n", getHostName());
         Serial.printf("  mqtt_server: %s\n", getMqttServer());
         Serial.printf("  mqtt_port: %d\n", getMqttPort());
@@ -59,9 +55,6 @@ void executeCommand(char* cmd) {
             else if (strcmp(key, "lte_apn") == 0) Serial.println(getLteApn());
             else if (strcmp(key, "lte_tx") == 0) Serial.println(getLteTx());
             else if (strcmp(key, "lte_rx") == 0) Serial.println(getLteRx());
-            else if (strcmp(key, "syslog_enabled") == 0) Serial.println(getSyslogEnabled() ? "true" : "false");
-            else if (strcmp(key, "syslog_host") == 0) Serial.println(getSyslogHost());
-            else if (strcmp(key, "syslog_port") == 0) Serial.println(getSyslogPort());
             else if (strcmp(key, "hostName") == 0) Serial.println(getHostName());
             else if (strcmp(key, "mqtt_server") == 0) Serial.println(getMqttServer());
             else if (strcmp(key, "mqtt_port") == 0) Serial.println(getMqttPort());
@@ -92,22 +85,6 @@ void executeCommand(char* cmd) {
             else if (strcmp(key, "ap_password") == 0) status = setApPassword(val);
             else if (strcmp(key, "web_password") == 0) status = setWebPassword(val);
             else if (strcmp(key, "lte_apn") == 0) status = setLteApn(val);
-            else if (strcmp(key, "syslog_host") == 0) status = setSyslogHost(val);
-            else if (strcmp(key, "syslog_port") == 0) {
-                char* end = nullptr;
-                errno = 0;
-                long port = strtol(val, &end, 10);
-                status = (!errno && end != val && *end == '\0' && port >= 1 && port <= 65535) ?
-                         setSyslogPort(port) : ConfigStatus::ERROR_PORT_RANGE;
-            }
-            else if (strcmp(key, "syslog_enabled") == 0) {
-                if (strcmp(val, "true") == 0 || strcmp(val, "1") == 0) status = setSyslogEnabled(true);
-                else if (strcmp(val, "false") == 0 || strcmp(val, "0") == 0) status = setSyslogEnabled(false);
-                else {
-                    Serial.println("Error: Value must be 'true', 'false', '1', or '0'.");
-                    return;
-                }
-            }
             else if (strcmp(key, "lte_enabled") == 0) {
                 if (strcmp(val, "true") == 0 || strcmp(val, "1") == 0) {
                     status = setLteEnabled(true);
@@ -196,8 +173,6 @@ void executeCommand(char* cmd) {
                 Serial.println("Error: LTE GPIO must be -1 (unset) or a free pin; CAN, USB, flash/PSRAM, UART0 and strapping pins are reserved.");
             } else if (status == ConfigStatus::ERROR_LTE_APN) {
                 Serial.println("Error: APN may contain only letters, digits, dots, hyphens and underscores.");
-            } else if (status == ConfigStatus::ERROR_SYSLOG_HOST) {
-                Serial.println("Error: Syslog host must be an IPv4 address or DNS hostname without a URL/port.");
             } else if (status == ConfigStatus::ERROR_STORAGE) {
                 Serial.println("Error: Configuration could not be saved to NVS.");
             } else {
@@ -212,9 +187,6 @@ void executeCommand(char* cmd) {
     }
     else if (strcmp(command, "mqtt-status") == 0) {
         printMqttStatus();
-    }
-    else if (strcmp(command, "syslog-status") == 0) {
-        printSyslogStatus();
     }
     else if (strcmp(command, "reboot") == 0) {
         Serial.println("Rebooting...");

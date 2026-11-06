@@ -67,13 +67,6 @@ const char* parseSettings(const cJSON* settings, RemoteSettings& output) {
         } else if (strcmp(key, "lte_enabled") == 0) {
             if (!cJSON_IsBool(field)) return "lte_enabled must be a JSON boolean";
             output.lteEnabled = cJSON_IsTrue(field);
-        } else if (strcmp(key, "syslog_enabled") == 0) {
-            if (!cJSON_IsBool(field)) return "syslog_enabled must be a JSON boolean";
-            output.syslogEnabled = cJSON_IsTrue(field);
-        } else if (strcmp(key, "syslog_host") == 0) {
-            if (!copyValue(field, output.syslogHost, 63) || !validNetworkName(output.syslogHost)) return "invalid syslog_host";
-        } else if (strcmp(key, "syslog_port") == 0) {
-            if (!integerValue(field, 1, 65535, output.syslogPort)) return "invalid syslog_port";
         } else return "unsupported setting";
     }
     return nullptr;
@@ -130,7 +123,6 @@ const char* validateRemoteApply(const RemoteSettings& settings) {
         return "enabled LTE requires APN and distinct, valid TX/RX pins";
     }
     if (!settings.ssid[0] && !settings.lteEnabled) return "keep at least one WiFi/LTE uplink configured";
-    if (settings.syslogEnabled && !settings.syslogHost[0]) return "enabled syslog requires a host";
     return nullptr;
 }
 

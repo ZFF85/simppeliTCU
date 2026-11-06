@@ -101,7 +101,6 @@ Available commands:
 * `set <key> <value>` - Updates the specified key with a new value (saved persistently).
 * `lte-status` - Shows runtime LTE state, active uplink, last error and cached modem diagnostics.
 * `mqtt-status` - Shows MQTT connection state, broker, active uplink and last connection result without reconnecting.
-* `syslog-status` - Shows the UDP log destination, sender state and sent/dropped counters.
 * `reboot` - Restarts the device to apply the changes immediately.
 * `factory-reset` - Clears all configuration settings and restarts the device.
 
@@ -125,7 +124,6 @@ reboot
 * `ap_ssid`, `ap_password` (For creating a local Wi-Fi Access Point / AP mode)
 * `web_password` (HTTP Basic Authentication password for the Web UI; minimum 8 characters)
 * `lte_enabled`, `lte_apn`, `lte_tx`, `lte_rx` (Optional UART/PPP cellular fallback; disabled by default. See [4G setup](docs/lte.md).)
-* `syslog_enabled`, `syslog_host`, `syslog_port` (Optional UDP/RFC5424 remote logging; disabled by default, port 514)
 * `hostName`
 * `mqtt_server`, `mqtt_port`, `mqtt_user`, `mqtt_password`, `vehicle_id`
 * `mqtt_tls` (Enable/disable TLS for MQTT connection; default: `true`)
@@ -142,7 +140,7 @@ reboot
 
 **4G fallback:** With LTE enabled and configured, primary Wi-Fi remains preferred, followed by fallback Wi-Fi, then the modem. The first modem attempt starts after 20 seconds without a Wi-Fi IP (immediately if no STA network is configured). An established PPP session stays on standby; Wi-Fi must be connected for 10 seconds before switching back from LTE. MQTT reconnects on the selected interface using the same broker, credentials and topics. See [4G setup and hardware test procedure](docs/lte.md).
 
-**Remote configuration and logging:** Wi-Fi, LTE and syslog settings can be staged over MQTT and saved with a separate apply/reboot request. Passwords are write-only over MQTT. See [MQTT configuration and syslog-ng setup](docs/remote-configuration.md) for topics, JSON examples and the session/replay protection.
+**Remote configuration:** Wi-Fi and LTE settings can be staged over MQTT and saved with a separate apply/reboot request. Passwords are write-only over MQTT. See [MQTT network configuration](docs/remote-configuration.md) for topics, JSON examples and the session/replay protection.
 
 ## Compiling and Uploading
 

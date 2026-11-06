@@ -12,9 +12,6 @@ struct RemoteSettings {
     char apn[64] = {};
     int tx = -1;
     int rx = -1;
-    bool syslogEnabled = false;
-    char syslogHost[64] = {};
-    int syslogPort = 514;
 };
 
 enum class RemoteAction { GET, SET, APPLY };

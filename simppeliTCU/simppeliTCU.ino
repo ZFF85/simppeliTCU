@@ -9,7 +9,6 @@
 #include "mqttInterface.h"
 #include "connectivity.h"
 #include "remoteConfig.h"
-#include "systemLog.h"
 
 WebServer server(80);
 
@@ -268,7 +267,7 @@ void connectWiFi(bool fallback) {
   usingFallback = fallback;
   wasStaConnected = false;
   wifiAttemptStart = millis();
-  systemLog("[WiFi] Connecting to %s: %s", fallback ? "fallback" : "primary",
+  Serial.printf("[WiFi] Connecting to %s: %s\n", fallback ? "fallback" : "primary",
                 fallback ? getFallbackSSID() : getWifiSSID());
   if (WiFi.status() == WL_CONNECTED) WiFi.disconnect(false, false);
   WiFi.begin(fallback ? getFallbackSSID() : getWifiSSID(),
@@ -317,7 +316,7 @@ void manageWiFi() {
     if (WiFi.status() == WL_CONNECTED &&
         (wasStaConnected || WiFi.SSID() == (usingFallback ? getFallbackSSID() : getWifiSSID()))) {
       if (!wasStaConnected) {
-        systemLog("[WiFi] Connected to %s", usingFallback ? "fallback" : "primary");
+        Serial.printf("[WiFi] Connected to %s\n", usingFallback ? "fallback" : "primary");
         Serial.print("[WiFi] IP: ");
         Serial.println(WiFi.localIP());
         wasStaConnected = true;
@@ -339,8 +338,8 @@ void manageWiFi() {
             primaryScanRunning = false;
             if (foundPrimary) {
               if (primarySeen && currentTime - primarySeenSince >= 5000) {
-                systemLog("[WiFi] Primary network available again");
-                systemLog("[WiFi] Switching to primary");
+                Serial.println("[WiFi] Primary network available again");
+                Serial.println("[WiFi] Switching to primary");
                 primarySeen = false;
                 connectWiFi(false);
               } else if (!primarySeen) {
@@ -367,7 +366,7 @@ void manageWiFi() {
       // Give primary a fresh connection attempt before falling back.
       connectWiFi(false);
     } else if (currentTime - wifiAttemptStart >= retryInterval) {
-      systemLog("[WiFi] %s connection failed", usingFallback ? "Fallback" : "Primary");
+      Serial.printf("[WiFi] %s connection failed\n", usingFallback ? "Fallback" : "Primary");
       connectWiFi(!usingFallback);
     }
   }
@@ -375,7 +374,7 @@ void manageWiFi() {
   if (WiFi.status() != WL_CONNECTED)
   {
     if (wifiAvailable) {
-      systemLog("[WiFi] Disconnected, stopping mDNS/NBNS services");
+      Serial.println("[WiFi] Disconnected, stopping mDNS/NBNS services");
       MDNS.end();
       NBNS.end();
       wifiAvailable = false;
@@ -387,7 +386,7 @@ void manageWiFi() {
     }
   }
   else if (!wifiAvailable) {
-    systemLog("[WiFi] Connected; IP: %s", WiFi.localIP().toString().c_str());
+    Serial.printf("[WiFi] Connected; IP: %s\n", WiFi.localIP().toString().c_str());
   
     if (!MDNS.begin(getHostName())) {
       Serial.println("Error starting mDNS service!");
@@ -414,7 +413,6 @@ void manageWiFi() {
 void setup() {
   Serial.begin(115200);
   initConfiguration();
-  setupSystemLog();
 
   bool staEnabled = strlen(getWifiSSID()) > 0;
   bool apEnabled = strlen(getApSSID()) > 0;
